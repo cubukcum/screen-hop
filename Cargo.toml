@@ -4,6 +4,7 @@ members = [
     "crates/screenhop-core",
     "crates/screenhop-ddc",
     "crates/screenhop-identity",
+    "crates/screenhop-net",
     "crates/screenhop-spike",
 ]
 
