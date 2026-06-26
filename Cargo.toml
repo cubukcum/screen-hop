@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/screenhop-core",
+    "crates/screenhop-ddc",
+    "crates/screenhop-spike",
+]
+
+[workspace.package]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/screen-hop/screen-hop"
+rust-version = "1.80"

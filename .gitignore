@@ -1,0 +1,12 @@
+# Rust build output
+/target
+
+# IDEs
+.idea/
+.vs/
+.vscode/
+
+# Logs / local scratch
+*.log
+
+# Note: Cargo.lock IS committed (screen-hop ships binaries, not just libraries).
