@@ -20,12 +20,6 @@ impl Envelope {
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         serde_json::from_slice(bytes).ok()
     }
-
-    /// Associated data binding a sealed frame to its `sender:seq`, so a captured frame cannot be
-    /// re-attributed to a different identity even by a holder of the group key.
-    pub fn aad(&self) -> Vec<u8> {
-        format!("{}:{}", self.from, self.seq).into_bytes()
-    }
 }
 
 /// The mesh wire protocol (docs/PLAN-screen-hop.md §8.4). Externally tagged by `type`.
@@ -137,16 +131,6 @@ mod tests {
     }
 
     #[test]
-    fn aad_binds_sender_and_seq() {
-        let env = Envelope {
-            from: "peerA".into(),
-            seq: 7,
-            body: Message::Heartbeat { state_version: 1 },
-        };
-        assert_eq!(env.aad(), b"peerA:7");
-    }
-
-    #[test]
     fn envelope_seals_and_opens_through_secure_channel() {
         use crate::crypto::SecureChannel;
         let ch = SecureChannel::from_passphrase("mesh");
@@ -155,8 +139,10 @@ mod tests {
             seq: 9,
             body: Message::Heartbeat { state_version: 2 },
         };
-        let frame = ch.seal(&env.to_bytes(), &env.aad());
-        let opened = ch.open(&frame, &env.aad()).expect("opens with matching aad");
+        let frame = ch.seal(&env.to_bytes(), crate::transport::PROTOCOL_AAD);
+        let opened = ch
+            .open(&frame, crate::transport::PROTOCOL_AAD)
+            .expect("opens with matching aad");
         assert_eq!(Envelope::from_bytes(&opened).as_ref(), Some(&env));
     }
 }
