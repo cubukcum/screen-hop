@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/screenhop-core",
     "crates/screenhop-ddc",
+    "crates/screenhop-identity",
     "crates/screenhop-spike",
 ]
 
