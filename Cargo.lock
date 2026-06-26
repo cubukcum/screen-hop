@@ -650,6 +650,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "screenhop-app"
+version = "0.0.0"
+dependencies = [
+ "screenhop-core",
+ "screenhop-net",
+ "screenhop-state",
+]
+
+[[package]]
 name = "screenhop-core"
 version = "0.0.0"
 

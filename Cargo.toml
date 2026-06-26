@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/screenhop-app",
     "crates/screenhop-core",
     "crates/screenhop-ddc",
     "crates/screenhop-identity",
