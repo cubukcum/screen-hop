@@ -1,6 +1,7 @@
 import { Theme } from "theme.slint";
 import { TrayFlyout, MonitorRow } from "tray_flyout.slint";
 import { OnboardingWizard } from "onboarding.slint";
+import { BlindDialog, StrandedDialog, DdcDialog, PartialDialog } from "dialogs.slint";
 
 export { Theme }
 
@@ -11,9 +12,10 @@ export component AppWindow inherits Window {
     default-font-family: "Segoe UI Variable Text";
     background: Theme.bg;
     in-out property <bool> dark <=> Theme.dark;
-    in-out property <int> screen: 1;   // 0 = flyout, 1 = onboarding wizard
+    in-out property <int> screen: 1;   // 0 = flyout, 1 = wizard, 2 = dialog
     in-out property <bool> dev-chrome: true;   // hidden in snapshot mode
     in-out property <int> wizard-step: 1;      // which onboarding step to show
+    in-out property <int> dialog: 1;           // 1 blind · 2 stranded · 3 ddc · 4 partial
 
     in-out property <[MonitorRow]> monitors: [
         { name: "Left 27\"", spec: "DP-1 · 1440p", active: 0 },
@@ -67,5 +69,10 @@ export component AppWindow inherits Window {
             step <=> root.wizard-step;
             close => { }
         }
+
+        if screen == 2 && dialog == 1: BlindDialog { }
+        if screen == 2 && dialog == 2: StrandedDialog { }
+        if screen == 2 && dialog == 3: DdcDialog { }
+        if screen == 2 && dialog == 4: PartialDialog { }
     }
 }

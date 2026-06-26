@@ -20,11 +20,20 @@ fn main() -> Result<(), slint::PlatformError> {
         app.set_dark(true);
     }
     if let Some(s) = arg_value(&args, "--screen") {
-        app.set_screen(if s == "wizard" { 1 } else { 0 });
+        app.set_screen(match s.as_str() {
+            "wizard" => 1,
+            "dialog" => 2,
+            _ => 0,
+        });
     }
     if let Some(s) = arg_value(&args, "--step") {
         if let Ok(n) = s.parse::<i32>() {
             app.set_wizard_step(n);
+        }
+    }
+    if let Some(s) = arg_value(&args, "--dialog") {
+        if let Ok(n) = s.parse::<i32>() {
+            app.set_dialog(n);
         }
     }
 
