@@ -49,13 +49,15 @@ export component TrayFlyout inherits Rectangle {
                 border-radius: 7px;
                 background: @linear-gradient(160deg, #117c44 0%, #0c5e32 100%);
                 TouchArea { clicked => { root.toggle-theme(); } }
-                Rectangle {
-                    width: 14px;
-                    height: 10px;
-                    border-radius: 2px;
-                    border-width: 1.6px;
-                    border-color: #ffffff;
-                    background: transparent;
+                Path {   // screen-hop mark: monitor + hop arc (i-logo)
+                    width: 17px;
+                    height: 17px;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    stroke: #ffffff;
+                    stroke-width: 1.7px;
+                    fill: transparent;
+                    commands: "M2.6 8.6 L13.6 8.6 L13.6 18 L2.6 18 Z M9 21 L6.2 21 M7.8 18 L7.8 21 M12.8 7.6 C13.6 4.2 17 2.9 19.6 4.8 M20.7 3.1 L21.1 5.8 L18.4 5.9";
                 }
             }
 
