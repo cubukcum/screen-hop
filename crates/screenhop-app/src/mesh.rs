@@ -11,11 +11,21 @@ use screenhop_net::{
     handshake, HandshakeError, Message, PeerIdentity, PinStore, RecvError, SecureChannel,
     SecureConnection, Verified,
 };
+use screenhop_core::SwitchOutcome;
 use screenhop_state::{LockManager, LockOutcome, OwnershipMap};
 
 /// Inbound read timeout — must be shorter than the 30 s lease TTL (D5) and bounds the
 /// pre-auth stall an unpaired host could cause (net security review, HIGH finding).
 const READ_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Performs this peer's local DDC actuation. The production impl wraps the M1 `SwitchExecutor` +
+/// a `MonitorDriver` + the calibration allow-list; tests use a fake.
+pub trait Actuator: Send {
+    /// Make THIS machine the active source on `monitor_id` (pull-to-self).
+    fn switch_to_self(&mut self, monitor_id: &str) -> SwitchOutcome;
+}
+
+type SharedActuator = Arc<Mutex<dyn Actuator>>;
 
 /// Shared, replicated mesh state behind one mutex.
 #[derive(Default)]
@@ -31,6 +41,7 @@ pub struct Node {
     key: Arc<[u8; 32]>,
     state: Arc<Mutex<MeshState>>,
     start: Instant,
+    actuator: Option<SharedActuator>,
 }
 
 #[derive(Debug)]
@@ -55,7 +66,15 @@ impl Node {
             key: Arc::new(key),
             state: Arc::new(Mutex::new(MeshState::default())),
             start: Instant::now(),
+            actuator: None,
         }
+    }
+
+    /// Attach the local DDC actuator so this node can perform switches it is asked to make.
+    pub fn with_actuator<A: Actuator + 'static>(mut self, actuator: A) -> Self {
+        let shared: SharedActuator = Arc::new(Mutex::new(actuator));
+        self.actuator = Some(shared);
+        self
     }
 
     pub fn peer_id(&self) -> String {
@@ -75,8 +94,9 @@ impl Node {
             let key = Arc::clone(&self.key);
             let state = Arc::clone(&self.state);
             let start = self.start;
+            let actuator = self.actuator.clone();
             thread::spawn(move || {
-                let _ = handle_connection(stream, &me, &key, &state, start);
+                let _ = handle_connection(stream, &me, &key, &state, start, actuator);
             });
         }
     }
@@ -158,6 +178,7 @@ fn handle_connection(
     key: &[u8; 32],
     state: &Arc<Mutex<MeshState>>,
     start: Instant,
+    actuator: Option<SharedActuator>,
 ) -> Result<(), ()> {
     stream.set_read_timeout(Some(READ_TIMEOUT)).map_err(|_| ())?;
     let channel = SecureChannel::new(key);
@@ -172,7 +193,9 @@ fn handle_connection(
                 if env.from != verified.peer_id {
                     continue;
                 }
-                if let Some(reply) = handle_message(state, &verified.peer_id, env.body, start) {
+                if let Some(reply) =
+                    handle_message(state, &verified.peer_id, &my_id, env.body, start, actuator.as_ref())
+                {
                     if conn.send(&my_id, reply).is_err() {
                         break;
                     }
@@ -188,8 +211,10 @@ fn handle_connection(
 fn handle_message(
     state: &Arc<Mutex<MeshState>>,
     from: &str,
+    my_id: &str,
     body: Message,
     start: Instant,
+    actuator: Option<&SharedActuator>,
 ) -> Option<Message> {
     match body {
         Message::OwnershipGossip {
@@ -219,12 +244,39 @@ fn handle_message(
                 }),
             }
         }
-        // Real DDC actuation arrives in M4; acknowledge so the protocol round-trips.
-        Message::SwitchCommand { monitor_id, .. } => Some(Message::SwitchResult {
-            monitor_id,
-            outcome: "ack".to_owned(),
-            observed: None,
-        }),
+        Message::SwitchCommand { monitor_id, target, .. } => {
+            // Only the chosen actuator (the target, for pull-to-self) performs the write.
+            if target != my_id {
+                return Some(Message::SwitchResult {
+                    monitor_id,
+                    outcome: "not-actuator".to_owned(),
+                    observed: None,
+                });
+            }
+            let Some(actuator) = actuator else {
+                return Some(Message::SwitchResult {
+                    monitor_id,
+                    outcome: "no-actuator".to_owned(),
+                    observed: None,
+                });
+            };
+
+            let outcome = actuator.lock().expect("actuator").switch_to_self(&monitor_id);
+            if outcome.is_effective_success() {
+                // Reconcile: this machine now drives the panel.
+                let now = start.elapsed().as_millis() as u64;
+                state
+                    .lock()
+                    .expect("state")
+                    .ownership
+                    .observe(&monitor_id, Some(my_id.to_owned()), now);
+            }
+            Some(Message::SwitchResult {
+                monitor_id,
+                outcome: format!("{outcome:?}"),
+                observed: None,
+            })
+        }
         _ => None,
     }
 }
@@ -235,6 +287,51 @@ mod tests {
 
     fn node(pass: &str) -> Node {
         Node::new(PeerIdentity::generate(), pass)
+    }
+
+    struct FakeActuator {
+        switched: Arc<Mutex<Vec<String>>>,
+    }
+    impl Actuator for FakeActuator {
+        fn switch_to_self(&mut self, monitor_id: &str) -> SwitchOutcome {
+            self.switched.lock().unwrap().push(monitor_id.to_owned());
+            SwitchOutcome::Success
+        }
+    }
+
+    #[test]
+    fn remote_switch_command_actuates_and_reconciles_ownership() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let switched = Arc::new(Mutex::new(Vec::new()));
+        let node_b = node("mesh").with_actuator(FakeActuator {
+            switched: Arc::clone(&switched),
+        });
+        let b_state = node_b.state();
+        let b_id = node_b.peer_id();
+        thread::spawn(move || node_b.serve(listener));
+
+        let node_a = node("mesh");
+        let mut session = node_a.connect(addr).unwrap();
+        session
+            .send(Message::SwitchCommand {
+                monitor_id: "m1".into(),
+                target: b_id.clone(),
+                input_value: 0x0F,
+            })
+            .unwrap();
+
+        match session.recv().unwrap() {
+            Message::SwitchResult { monitor_id, outcome, .. } => {
+                assert_eq!(monitor_id, "m1");
+                assert!(outcome.contains("Success"), "outcome was {outcome}");
+            }
+            other => panic!("expected SwitchResult, got {other:?}"),
+        }
+
+        assert_eq!(switched.lock().unwrap().as_slice(), ["m1".to_owned()]);
+        assert_eq!(b_state.lock().unwrap().ownership.owner("m1"), Some(b_id.as_str()));
     }
 
     #[test]
