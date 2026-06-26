@@ -27,14 +27,14 @@ export component TrayFlyout inherits Rectangle {
     callback switch(int, int);    // (monitor-index, peer-index)
     callback apply-preset(int);
 
-    width: 340px;
+    width: 350px;
     border-radius: 11px;
     background: Theme.layer;
     border-width: 1px;
     border-color: Theme.stroke;
-    drop-shadow-blur: 30px;
-    drop-shadow-color: #00000022;
-    drop-shadow-offset-y: 8px;
+    drop-shadow-blur: 34px;
+    drop-shadow-color: #00000026;
+    drop-shadow-offset-y: 10px;
 
     VerticalLayout {
         // ---------------- header ----------------
@@ -70,14 +70,17 @@ export component TrayFlyout inherits Rectangle {
             Rectangle { horizontal-stretch: 1; }
 
             Rectangle {   // "N online" status pill
-                height: 23px;
+                height: 22px;
                 border-radius: 11px;
                 background: Theme.accent-soft;
                 HorizontalLayout {
                     padding-left: 9px;
-                    padding-right: 9px;
-                    spacing: 5px;
-                    Rectangle { width: 6px; height: 6px; border-radius: 3px; background: Theme.ok-dot; }
+                    padding-right: 10px;
+                    spacing: 6px;
+                    VerticalLayout {   // wrap so the dot centers on the cross axis
+                        alignment: center;
+                        Rectangle { width: 6px; height: 6px; border-radius: 3px; background: Theme.ok-dot; }
+                    }
                     Text { text: "\{online-count} online"; color: Theme.accent-text; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
                 }
             }
@@ -89,34 +92,35 @@ export component TrayFlyout inherits Rectangle {
         for m[mi] in monitors: Rectangle {
             VerticalLayout {
                 HorizontalLayout {
-                    padding-left: 14px;
-                    padding-right: 12px;
-                    padding-top: 11px;
-                    padding-bottom: 11px;
+                    padding-left: 15px;
+                    padding-right: 13px;
+                    padding-top: 13px;
+                    padding-bottom: 13px;
                     spacing: 10px;
 
                     VerticalLayout {
                         horizontal-stretch: 1;
                         alignment: center;
-                        spacing: 1px;
+                        spacing: 2px;
                         Text { text: m.name; color: Theme.text; font-size: 13.5px; font-weight: 600; overflow: elide; }
                         Text { text: m.spec; color: Theme.text3; font-size: 11px; overflow: elide; }
                     }
 
                     Rectangle {   // segmented control
-                        height: 28px;
-                        border-radius: 7px;
+                        height: 30px;
+                        border-radius: 8px;
                         background: Theme.subtle;
                         border-width: 1px;
                         border-color: Theme.ctl-stroke;
                         HorizontalLayout {
-                            padding: 2px;
-                            spacing: 0px;
+                            padding: 3px;
+                            spacing: 2px;
                             for p[pi] in peers: Rectangle {
-                                width: 40px;
+                                width: 44px;
                                 border-radius: 6px;
-                                background: pi == m.active ? p.color : transparent;
-                                TouchArea { clicked => { root.switch(mi, pi); } }
+                                background: pi == m.active ? p.color : (seg.has-hover ? Theme.stroke : transparent);
+                                animate background { duration: 110ms; }
+                                seg := TouchArea { clicked => { root.switch(mi, pi); } }
                                 Text {
                                     text: p.label;
                                     color: pi == m.active ? #ffffff : Theme.text2;
