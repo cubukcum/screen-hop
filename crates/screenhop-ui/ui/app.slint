@@ -12,6 +12,7 @@ export component AppWindow inherits Window {
     background: Theme.bg;
     in-out property <bool> dark <=> Theme.dark;
     in-out property <int> screen: 1;   // 0 = flyout, 1 = onboarding wizard
+    in-out property <bool> dev-chrome: true;   // hidden in snapshot mode
 
     in-out property <[MonitorRow]> monitors: [
         { name: "Left 27\"", spec: "DP-1 · 1440p", active: 0 },
@@ -25,7 +26,7 @@ export component AppWindow inherits Window {
         alignment: start;
 
         // ---- dev switcher ----
-        HorizontalLayout {
+        if dev-chrome : HorizontalLayout {
             spacing: 8px;
             alignment: start;
             for opt[i] in ["Flyout", "Wizard"]: Rectangle {
