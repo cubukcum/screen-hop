@@ -60,12 +60,16 @@ component DiscoveryItem inherits Rectangle {
         padding-left: 11px;
         padding-right: 11px;
         spacing: 10px;
-        Rectangle {
-            width: 30px; height: 30px; border-radius: 7px;
-            background: root.accent.with-alpha(0.13);
-            y: (parent.height - self.height) / 2;
-            StrokeIcon { width: 17px; height: 17px; tint: root.accent; commands: root.icon; }
+        // icon badge, vertically centered
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 30px; height: 30px; border-radius: 7px;
+                background: root.accent.with-alpha(0.13);
+                StrokeIcon { width: 17px; height: 17px; tint: root.accent; commands: root.icon; }
+            }
         }
+        // name + ip
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
@@ -73,11 +77,15 @@ component DiscoveryItem inherits Rectangle {
             Text { text: root.name; color: Theme.text; font-size: 13px; font-weight: 600; }
             Text { text: root.ip; color: Theme.text3; font-size: 11px; }
         }
-        if !root.paired : Btn { label: "Pair"; h: 30px; }
-        if root.paired : HorizontalLayout {
-            spacing: 5px;
-            VerticalLayout { alignment: center; StrokeIcon { width: 14px; height: 14px; tint: Theme.accent-text; sw: 2.1px; commands: "M5 12.5 L9.5 17 L19 7"; } }
-            Text { text: "Paired"; color: Theme.accent-text; font-size: 12px; font-weight: 600; vertical-alignment: center; }
+        // trailing control: vertically centered, pushed flush-right by the stretch above
+        VerticalLayout {
+            alignment: center;
+            if !root.paired : Btn { label: "Pair"; h: 30px; }
+            if root.paired : HorizontalLayout {
+                spacing: 5px;
+                VerticalLayout { alignment: center; StrokeIcon { width: 14px; height: 14px; tint: Theme.accent-text; sw: 2.1px; commands: "M5 12.5 L9.5 17 L19 7"; } }
+                Text { text: "Paired"; color: Theme.accent-text; font-size: 12px; font-weight: 600; vertical-alignment: center; }
+            }
         }
     }
 }
