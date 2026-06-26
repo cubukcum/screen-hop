@@ -76,7 +76,7 @@ component DiscoveryItem inherits Rectangle {
         if !root.paired : Btn { label: "Pair"; h: 30px; }
         if root.paired : HorizontalLayout {
             spacing: 5px;
-            StrokeIcon { width: 14px; height: 14px; tint: Theme.accent-text; sw: 2.1px; commands: "M5 12.5 L9.5 17 L19 7"; }
+            VerticalLayout { alignment: center; StrokeIcon { width: 14px; height: 14px; tint: Theme.accent-text; sw: 2.1px; commands: "M5 12.5 L9.5 17 L19 7"; } }
             Text { text: "Paired"; color: Theme.accent-text; font-size: 12px; font-weight: 600; vertical-alignment: center; }
         }
     }
@@ -137,9 +137,7 @@ export component OnboardingWizard inherits Rectangle {
         }
 
         // -------- content --------
-        Rectangle {
-            vertical-stretch: 1;
-            if step == 1 : VerticalLayout {
+        if step == 1 : VerticalLayout {
                 padding-left: 18px;
                 padding-right: 18px;
                 padding-top: 14px;
@@ -239,12 +237,12 @@ export component OnboardingWizard inherits Rectangle {
                 DiscoveryItem { name: "Home-lab"; ip: "192.168.1.17"; accent: Theme.pc-homelab; icon: "M3.5 5 L20.5 5 L20.5 10.5 L3.5 10.5 Z M3.5 13.5 L20.5 13.5 L20.5 19 L3.5 19 Z"; paired: true; }
             }
 
-            if step != 1 : VerticalLayout {
+        if step != 1 : VerticalLayout {
+            padding: 48px;
+            alignment: center;
+            HorizontalLayout {
                 alignment: center;
-                HorizontalLayout {
-                    alignment: center;
-                    Text { text: "Step \{step} — coming next"; color: Theme.text3; font-size: 14px; }
-                }
+                Text { text: "Step \{step} — coming next"; color: Theme.text3; font-size: 14px; }
             }
         }
 
