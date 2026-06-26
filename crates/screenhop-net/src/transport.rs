@@ -15,8 +15,10 @@ use crate::message::{Envelope, Message};
 /// Fixed associated-data label binding frames to this protocol/version.
 pub const PROTOCOL_AAD: &[u8] = b"screen-hop/mesh/v1";
 
-/// Hard cap on a single frame to bound receive-side allocation.
-const MAX_FRAME_LEN: usize = 1 << 20; // 1 MiB
+/// Hard cap on a single frame to bound receive-side allocation. 64 KiB is ~100x the largest
+/// legitimate Envelope (gossip for a small mesh), so it shrinks an unpaired attacker's pre-auth
+/// buffer while comfortably fitting real traffic.
+const MAX_FRAME_LEN: usize = 64 * 1024;
 
 /// Write a `u32` big-endian length prefix followed by `payload`.
 pub fn write_frame<W: Write>(w: &mut W, payload: &[u8]) -> io::Result<()> {
@@ -56,6 +58,15 @@ pub enum RecvError {
 
 /// A secured connection over a byte stream `S`. Tracks its own outbound sequence counter and a
 /// per-sender [`ReplayWindow`] for inbound anti-replay.
+///
+/// SECURITY REQUIREMENTS the production caller (the agent loop) MUST satisfy — this crate is
+/// stream-generic and cannot enforce them itself:
+/// - The stream MUST carry a **read timeout** (`TcpStream::set_read_timeout`, shorter than the
+///   30 s lease TTL). Without it an unpaired LAN host can stall a receiver indefinitely by
+///   dribbling bytes (pre-auth DoS) and can starve lease renewal (D5).
+/// - `Envelope::from` is **not** a cryptographically authenticated identity here — any group-key
+///   holder can assert any `from`. Downstream consumers MUST validate `from` against the
+///   TOFU-pinned Ed25519 peer key (PLAN §8.2) before acting on lock/switch/state messages.
 pub struct SecureConnection<S> {
     stream: S,
     channel: SecureChannel,
@@ -91,6 +102,9 @@ impl<S: Read + Write> SecureConnection<S> {
     }
 
     /// Receive, open, parse, and anti-replay-check the next envelope.
+    ///
+    /// Blocks on the underlying stream — see the type-level SECURITY REQUIREMENTS: the stream
+    /// must carry a read timeout, and `env.from` must be identity-checked downstream before use.
     pub fn recv(&mut self) -> Result<Envelope, RecvError> {
         let frame = read_frame(&mut self.stream).map_err(RecvError::Io)?;
         let plaintext = self
