@@ -155,6 +155,73 @@ component MonitorProbeRow inherits Rectangle {
     }
 }
 
+// --- Step 3 calibration-matrix building blocks ---
+component VDiv inherits Rectangle { width: 1px; background: Theme.stroke; }
+
+component PcHead inherits Rectangle {
+    in property <string> name;
+    in property <color> dot;
+    horizontal-stretch: 1;
+    background: Theme.layer2;
+    HorizontalLayout {
+        alignment: center;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 5px;
+        VerticalLayout { alignment: center; Rectangle { width: 8px; height: 8px; border-radius: 4px; background: root.dot; } }
+        Text { text: root.name; color: Theme.text; font-size: 12px; font-weight: 600; vertical-alignment: center; }
+    }
+}
+
+component MonCell inherits Rectangle {
+    in property <string> name;
+    width: 130px;
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-top: 13px;
+        padding-bottom: 13px;
+        spacing: 7px;
+        VerticalLayout { alignment: center; StrokeIcon { width: 15px; height: 15px; tint: Theme.text3; commands: "M2.5 4 L21.5 4 L21.5 17 L2.5 17 Z M8.5 20.5 L15.5 20.5 M12 17 L12 20.3"; } }
+        Text { text: root.name; color: Theme.text; font-size: 12.5px; font-weight: 600; vertical-alignment: center; }
+    }
+}
+
+component CalStatusCell inherits Rectangle {
+    in property <int> kind;   // 0 confirmed · 1 unknown · 2 learning
+    horizontal-stretch: 1;
+    background: kind == 2 ? Theme.accent-soft : transparent;
+    HorizontalLayout {
+        alignment: center;
+        padding-top: 13px;
+        padding-bottom: 13px;
+        if kind == 0 : HorizontalLayout {
+            spacing: 5px;
+            VerticalLayout { alignment: center; StrokeIcon { width: 15px; height: 15px; tint: Theme.accent-text; sw: 2.1px; commands: "M5 12.5 L9.5 17 L19 7"; } }
+            Text { text: "Confirmed"; color: Theme.accent-text; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
+        }
+        if kind == 1 : Text { text: "— unknown"; color: Theme.text3; font-size: 11px; vertical-alignment: center; }
+        if kind == 2 : HorizontalLayout {
+            spacing: 6px;
+            VerticalLayout { alignment: center; Rectangle { width: 11px; height: 11px; border-radius: 6px; border-width: 2px; border-color: Theme.accent-text; background: transparent; } }
+            Text { text: "Learning…"; color: Theme.accent-text; font-size: 11px; font-weight: 700; vertical-alignment: center; }
+        }
+    }
+}
+
+component CalRow inherits HorizontalLayout {
+    in property <string> name;
+    in property <int> k0;
+    in property <int> k1;
+    in property <int> k2;
+    MonCell { name: root.name; }
+    VDiv { }
+    CalStatusCell { kind: root.k0; }
+    VDiv { }
+    CalStatusCell { kind: root.k1; }
+    VDiv { }
+    CalStatusCell { kind: root.k2; }
+}
+
 // Onboarding wizard — chrome + 4-step stepper + step content + footer (DESIGN-SPEC "Onboarding").
 export component OnboardingWizard inherits Rectangle {
     in-out property <int> step: 1;   // 1..4
@@ -338,12 +405,94 @@ export component OnboardingWizard inherits Rectangle {
             }
         }
 
-        if step >= 3 : VerticalLayout {
+        if step == 3 : VerticalLayout {
+            padding-left: 18px;
+            padding-right: 18px;
+            padding-top: 14px;
+            padding-bottom: 16px;
+            spacing: 0px;
+
+            Text { text: "Step 3 of 4 · Calibrate"; color: Theme.text3; font-size: 11.5px; font-weight: 700; }
+            Rectangle { height: 8px; }
+            Text { text: "Teach each PC its input on each monitor"; color: Theme.text; font-size: 17px; font-weight: 600; }
+            Text { text: "screen-hop can only read a PC's input code for a monitor while that PC is the one showing on it. Make each PC active on each monitor once — you may need to press the monitor's physical Input button to bootstrap."; color: Theme.text2; font-size: 12.5px; wrap: word-wrap; }
+            Rectangle { height: 15px; }
+
+            Rectangle {   // calibration matrix
+                border-radius: 10px;
+                background: Theme.layer;
+                border-width: 1px;
+                border-color: Theme.stroke;
+                clip: true;
+                VerticalLayout {
+                    HorizontalLayout {
+                        Rectangle {
+                            width: 130px;
+                            background: Theme.layer2;
+                            HorizontalLayout {
+                                padding-left: 12px; padding-top: 10px; padding-bottom: 10px;
+                                Text { text: "MONITOR \\ PC"; color: Theme.text3; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; vertical-alignment: center; }
+                            }
+                        }
+                        VDiv { }
+                        PcHead { name: "Work"; dot: Theme.pc-work; }
+                        VDiv { }
+                        PcHead { name: "Gaming"; dot: Theme.pc-gaming; }
+                        VDiv { }
+                        PcHead { name: "Home-lab"; dot: Theme.pc-homelab; }
+                    }
+                    Rectangle { height: 1px; background: Theme.stroke; }
+                    CalRow { name: "Left 27\""; k0: 0; k1: 0; k2: 0; }
+                    Rectangle { height: 1px; background: Theme.stroke; }
+                    CalRow { name: "Center 32\""; k0: 0; k1: 2; k2: 1; }
+                    Rectangle { height: 1px; background: Theme.stroke; }
+                    CalRow { name: "Right 27\""; k0: 0; k1: 1; k2: 1; }
+                }
+            }
+
+            Rectangle { height: 13px; }
+            HorizontalLayout {   // progress
+                spacing: 12px;
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    Rectangle {
+                        height: 7px;
+                        border-radius: 4px;
+                        background: Theme.dark ? #ffffff1f : #e8e8e8;
+                        clip: true;
+                        Rectangle { x: 0px; width: parent.width * 0.56; height: 7px; border-radius: 4px; background: Theme.accent; }
+                    }
+                }
+                Text { text: "5 of 9 learned"; color: Theme.text2; font-size: 12px; font-weight: 600; vertical-alignment: center; }
+            }
+
+            Rectangle { height: 13px; }
+            Rectangle {   // guidance box
+                border-radius: 9px;
+                background: Theme.accent-soft;
+                border-width: 1px;
+                border-color: Theme.accent-soft-stroke;
+                HorizontalLayout {
+                    padding-left: 14px; padding-right: 14px; padding-top: 12px; padding-bottom: 12px;
+                    spacing: 11px;
+                    VerticalLayout { StrokeIcon { width: 18px; height: 18px; tint: Theme.accent-text; commands: "M4 12 L19 12 M13 6 L19 12 L13 18"; } }
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 2px;
+                        Text { text: "Now: make Home-lab show on Center 32\""; color: Theme.accent-text; font-size: 13px; font-weight: 600; }
+                        Text { text: "Switch Home-lab onto it (or press the monitor's Input button). screen-hop reads the input the moment it appears."; color: Theme.text2; font-size: 11.5px; wrap: word-wrap; }
+                    }
+                }
+            }
+        }
+
+        if step == 4 : VerticalLayout {
             padding: 48px;
             alignment: center;
             HorizontalLayout {
                 alignment: center;
-                Text { text: "Step \{step} — coming next"; color: Theme.text3; font-size: 14px; }
+                Text { text: "Step 4 (Names) — coming next"; color: Theme.text3; font-size: 14px; }
             }
         }
 
@@ -359,7 +508,8 @@ export component OnboardingWizard inherits Rectangle {
                 padding-right: 18px;
                 padding-top: 13px;
                 padding-bottom: 13px;
-                Btn { label: "Back"; clicked => { if (step > 1) { step -= 1; } } }
+                if step != 3 : Btn { label: "Back"; clicked => { if (step > 1) { step -= 1; } } }
+                if step == 3 : VerticalLayout { alignment: center; Text { text: "You can finish later — unknown pairs just can't be auto-switched yet."; color: Theme.text3; font-size: 11.5px; vertical-alignment: center; } }
                 Rectangle { horizontal-stretch: 1; }
                 Btn {
                     label: step == 1 ? "Next: monitors" : step == 2 ? "Next: calibrate" : step == 3 ? "Next: names" : "Finish";
