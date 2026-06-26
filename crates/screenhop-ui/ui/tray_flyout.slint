@@ -1,0 +1,203 @@
+import { Theme } from "theme.slint";
+
+export struct MonitorRow {
+    name: string,
+    spec: string,
+    owner: string,
+    accent: color,   // per-PC color (icon outline + owner dot)
+}
+
+export struct Preset {
+    name: string,
+    active: bool,
+}
+
+// The primary control surface (DESIGN-SPEC §1 "Tray flyout"): 392px wide list of
+// monitors with their owning PC, named presets, and a footer action row.
+export component TrayFlyout inherits Rectangle {
+    in property <[MonitorRow]> monitors;
+    in property <[Preset]> presets;
+    in property <int> online-count: 3;
+    callback toggle-theme();
+    callback open-desk-map();
+
+    width: 392px;
+    border-radius: 9px;
+    background: Theme.flyout-bg;
+    border-width: 1px;
+    border-color: Theme.stroke;
+    drop-shadow-blur: 36px;
+    drop-shadow-color: #00000029;
+    drop-shadow-offset-y: 12px;
+
+    VerticalLayout {
+        // ---------------- header ----------------
+        Rectangle {
+            height: 38px;
+            HorizontalLayout {
+                padding-left: 13px;
+                padding-right: 11px;
+                spacing: 9px;
+
+                Rectangle {   // logo
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 6px;
+                    background: @linear-gradient(160deg, #117c44 0%, #0c5e32 100%);
+                    Rectangle {
+                        width: 13px;
+                        height: 9px;
+                        border-radius: 2px;
+                        border-width: 1.5px;
+                        border-color: #ffffff;
+                        background: transparent;
+                    }
+                }
+
+                HorizontalLayout {   // screen-/hop
+                    Text { text: "screen-"; color: Theme.text; font-size: 14px; font-weight: 600; vertical-alignment: center; }
+                    Text { text: "hop"; color: Theme.accent-text; font-size: 14px; font-weight: 600; vertical-alignment: center; }
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                Rectangle {   // status pill
+                    height: 22px;
+                    border-radius: 11px;
+                    background: Theme.accent-soft;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 5px;
+                        Rectangle { width: 6px; height: 6px; border-radius: 3px; background: Theme.ok-dot; }
+                        Text { text: "\{online-count} online"; color: Theme.accent-text; font-size: 11px; font-weight: 600; vertical-alignment: center; }
+                    }
+                }
+
+                Rectangle {   // theme toggle
+                    width: 30px;
+                    height: 30px;
+                    border-radius: 6px;
+                    background: tgl.has-hover ? Theme.subtle : transparent;
+                    tgl := TouchArea { clicked => { root.toggle-theme(); } }
+                    Text { text: Theme.dark ? "☀" : "☾"; color: Theme.text3; font-size: 15px; }
+                }
+            }
+        }
+
+        // ---------------- monitors ----------------
+        VerticalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-bottom: 4px;
+            Text { text: "MONITORS"; color: Theme.text3; font-size: 10.5px; font-weight: 700; letter-spacing: 0.6px; }
+        }
+        VerticalLayout {
+            padding-left: 9px;
+            padding-right: 9px;
+            spacing: 4px;
+            for m in monitors: Rectangle {
+                height: 50px;
+                border-radius: 7px;
+                background: Theme.layer;
+                border-width: Theme.dark ? 0px : 1px;
+                border-color: Theme.stroke;
+                HorizontalLayout {
+                    padding: 8px;
+                    spacing: 10px;
+                    Rectangle {   // icon container
+                        width: 34px;
+                        height: 34px;
+                        border-radius: 8px;
+                        background: m.accent.with-alpha(0.13);
+                        Rectangle {
+                            width: 17px;
+                            height: 12px;
+                            border-radius: 2px;
+                            border-width: 1.7px;
+                            border-color: m.accent;
+                            background: transparent;
+                        }
+                    }
+                    VerticalLayout {   // name + spec
+                        horizontal-stretch: 1;
+                        alignment: center;
+                        Text { text: m.name; color: Theme.text; font-size: 13.5px; font-weight: 600; overflow: elide; }
+                        Text { text: m.spec; color: Theme.text3; font-size: 11px; overflow: elide; }
+                    }
+                    Rectangle {   // owner pill
+                        height: 24px;
+                        border-radius: 13px;
+                        background: Theme.subtle;
+                        border-width: 1px;
+                        border-color: Theme.stroke;
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            spacing: 6px;
+                            Rectangle { width: 7px; height: 7px; border-radius: 4px; background: m.accent; }
+                            Text { text: m.owner; color: Theme.text; font-size: 12px; font-weight: 600; vertical-alignment: center; }
+                        }
+                    }
+                    chev := Path {   // chevron-down
+                        width: 15px;
+                        height: 15px;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        stroke: Theme.text3;
+                        stroke-width: 1.8px;
+                        fill: transparent;
+                        commands: "M5 9 L12 16 L19 9";
+                    }
+                }
+            }
+        }
+
+        // ---------------- presets ----------------
+        Rectangle { height: 1px; background: Theme.stroke; }
+        VerticalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 9px;
+            Text { text: "PRESETS"; color: Theme.text3; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
+        }
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 8px;
+            padding-bottom: 12px;
+            spacing: 7px;
+            alignment: start;
+            for p in presets: Rectangle {
+                height: 30px;
+                width: txt.preferred-width + 20px;
+                border-radius: 8px;
+                background: p.active ? Theme.accent-soft : Theme.layer;
+                border-width: 1px;
+                border-color: p.active ? Theme.accent-soft-stroke : Theme.ctl-stroke;
+                txt := Text {
+                    text: p.name;
+                    color: p.active ? Theme.accent-text : Theme.text;
+                    font-size: 12.5px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+
+        // ---------------- footer ----------------
+        Rectangle { height: 1px; background: Theme.stroke; }
+        Rectangle {
+            height: 40px;
+            TouchArea { clicked => { root.open-desk-map(); } }
+            HorizontalLayout {
+                padding-left: 14px;
+                padding-right: 14px;
+                Text { text: "Open desk map"; color: Theme.accent-text; font-size: 12.5px; font-weight: 600; vertical-alignment: center; }
+                Rectangle { horizontal-stretch: 1; }
+                Text { text: "Manage"; color: Theme.text2; font-size: 12.5px; font-weight: 600; vertical-alignment: center; }
+            }
+        }
+    }
+}
