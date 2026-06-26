@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  @keyframes sh-spin{to{transform:rotate(360deg)}}
+  @keyframes sh-flash{0%,100%{opacity:.25}50%{opacity:1}}
+  @keyframes sh-dash{to{stroke-dashoffset:-18}}
+  @keyframes sh-pulse{0%{box-shadow:0 0 0 0 rgba(17,124,68,.4)}70%{box-shadow:0 0 0 12px rgba(17,124,68,0)}100%{box-shadow:0 0 0 0 rgba(17,124,68,0)}}
+</style>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-monitor" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8.5 20.5h7M12 17v3.3"/></symbol>
+  <symbol id="i-pc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="2"/><path d="M9.5 17.5h5"/><circle cx="9" cy="6.5" r="0.75" fill="currentColor" stroke="none"/><circle cx="9" cy="9.3" r="0.75" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="6" rx="1.5"/><rect x="3.5" y="13" width="17" height="6" rx="1.5"/><circle cx="7" cy="7.5" r="0.85" fill="currentColor" stroke="none"/><circle cx="7" cy="16" r="0.85" fill="currentColor" stroke="none"/><path d="M14 7.5h3.5M14 16h3.5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.7-4.7"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.1"/><path d="M12 2.6v3M12 18.4v3M21.4 12h-3M5.6 12h-3M18.6 5.4l-2.1 2.1M7.5 16.5l-2.1 2.1M18.6 18.6l-2.1-2.1M7.5 7.5 5.4 5.4"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></symbol>
+  <symbol id="i-chev-d" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l7 7 7-7"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.4 22 19.5H2z"/><path d="M12 9.7v4.1"/><circle cx="12" cy="16.8" r="0.95" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11.2v5.3"/><circle cx="12" cy="7.9" r="0.95" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 4v5h-5"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v8"/><path d="M6.4 7.2a8 8 0 1 0 11.2 0"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6.5" width="19" height="11" rx="2"/><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M8 13.7h8"/></symbol>
+  <symbol id="i-identify" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.1" fill="currentColor" stroke="none"/><path d="M8.1 8.1a5.5 5.5 0 0 0 0 7.8M15.9 15.9a5.5 5.5 0 0 0 0-7.8M5.4 5.4a9.3 9.3 0 0 0 0 13.2M18.6 18.6a9.3 9.3 0 0 0 0-13.2"/></symbol>
+  <symbol id="i-preset" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4.3L5.5 20.5v-16a1 1 0 0 1 1-1z"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></symbol>
+  <symbol id="i-arrow-r" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h15M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-tiles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4" width="7" height="7" rx="1.5"/><rect x="13.5" y="4" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-net" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8.5a14 14 0 0 1 19 0M5.5 11.8a9 9 0 0 1 13 0M8.6 15a4.5 4.5 0 0 1 6.8 0"/><circle cx="12" cy="18.4" r="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.4M12 19.1V21.5M4.4 4.4 6 6M18 18l1.6 1.6M2.5 12h2.4M19.1 12h2.4M4.4 19.6 6 18M18 6l1.6-1.6"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13.5A8 8 0 1 1 10.4 4a6.2 6.2 0 0 0 9.6 9.5z"/></symbol>
+  <symbol id="i-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.6" y="8.6" width="13" height="9.4" rx="2"/><path d="M9 21h-2.8M7.8 18v3"/><path d="M12.8 7.6C13.6 4.2 17 2.9 19.6 4.8"/><path d="M20.7 3.1l.4 2.7-2.7.1"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 14.5l5-5"/><path d="M7.5 11l-1.7 1.7a3.5 3.5 0 0 0 5 5L12.5 16"/><path d="M16.5 13l1.7-1.7a3.5 3.5 0 0 0-5-5L11.5 8"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="6" height="6" rx="1"/><rect x="14.5" y="3.5" width="6" height="6" rx="1"/><rect x="3.5" y="14.5" width="6" height="6" rx="1"/><path d="M14.5 14.5h3v3M20.5 14.5v6M17.5 20.5h3"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3 4.5 13.5H11l-1 7.5L19 10h-6.5z"/></symbol>
+</svg>
+
+<!-- ============ TITLE ============ -->
+<div style="position:absolute;left:60px;top:36px;width:900px;font-family:'Segoe UI Variable Display','Segoe UI',system-ui,sans-serif">
+  <div style="display:flex;align-items:center;gap:12px">
+    <span style="width:38px;height:38px;border-radius:9px;background:linear-gradient(160deg,#117c44,#0c5e32);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.18)"><svg viewBox="0 0 24 24" style="width:23px;height:23px;color:#fff" fill="none"><use href="#i-logo"/></svg></span>
+    <div>
+      <div style="font-size:26px;font-weight:700;letter-spacing:-.5px;color:#1d1d1f">screen-hop — design explorations</div>
+      <div style="font-size:14px;color:#5c5c5c;margin-top:1px">Windows 11 Fluent · onboarding, critical states, settings, and variations. The interactive prototype lives in <b>screen-hop.dc.html</b>.</div>
+    </div>
+  </div>
+</div>
+
+<div style="position:absolute;left:1010px;top:40px;width:230px;background:#fef4a8;padding:13px 15px;font:12.5px/1.5 'Segoe UI',system-ui;color:#5b4a17;box-shadow:0 2px 8px rgba(0,0,0,.12);transform:rotate(-1.2deg);border-radius:2px">Frames are shown in <b>light</b> and <b>dark</b> side-by-side. Status colors: <b style="color:#0e6b36">green</b> = good/active, <b style="color:#9a6700">amber</b> = needs you, <b style="color:#b42a1c">red</b> = error.</div>
+
+<!-- ============ SECTION: ONBOARDING ============ -->
+<div style="position:absolute;left:60px;top:150px;font:700 13px 'Segoe UI',system-ui;letter-spacing:1.5px;color:#8a8a8a">ONBOARDING WIZARD</div>
+
+<!-- Step 1: Pair -->
+<div style="position:absolute;left:60px;top:188px;width:600px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">a · Pair PCs</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.13);background:var(--bg,#f3f3f3);border:1px solid rgba(0,0,0,.08);color:var(--text,#1a1a1a);font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="display:flex;align-items:center;height:36px;padding:0 10px;background:var(--bg-2,#eaeaea);border-bottom:1px solid var(--stroke,rgba(0,0,0,.06))">
+      <span style="width:16px;height:16px;border-radius:4px;background:linear-gradient(160deg,#117c44,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:11px;height:11px;color:#fff" fill="none"><use href="#i-logo"/></svg></span>
+      <span style="font-size:11.5px;font-weight:600;color:var(--text-2,#5c5c5c);margin-left:8px">Set up screen-hop</span>
+      <div style="flex:1"></div>
+      <span style="width:38px;height:36px;display:flex;align-items:center;justify-content:center;color:var(--text-3,#8a8a8a)"><svg viewBox="0 0 24 24" style="width:13px;height:13px" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 6l12 12M18 6L6 18"/></svg></span>
+    </div>
+    <!-- stepper -->
+    <div style="display:flex;align-items:center;gap:6px;padding:12px 18px 4px;font-size:11.5px;font-weight:600">
+      <span style="display:flex;align-items:center;gap:6px;color:var(--accent-text,#0e6b36)"><span style="width:18px;height:18px;border-radius:50%;background:var(--accent,#107c41);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px">1</span>Pair</span>
+      <span style="flex:1;height:1px;background:var(--stroke,rgba(0,0,0,.1))"></span>
+      <span style="display:flex;align-items:center;gap:6px;color:var(--text-3,#8a8a8a)"><span style="width:18px;height:18px;border-radius:50%;border:1px solid var(--ctl-stroke,rgba(0,0,0,.2));display:flex;align-items:center;justify-content:center;font-size:10px">2</span>Monitors</span>
+      <span style="flex:1;height:1px;background:var(--stroke,rgba(0,0,0,.1))"></span>
+      <span style="display:flex;align-items:center;gap:6px;color:var(--text-3,#8a8a8a)"><span style="width:18px;height:18px;border-radius:50%;border:1px solid var(--ctl-stroke,rgba(0,0,0,.2));display:flex;align-items:center;justify-content:center;font-size:10px">3</span>Calibrate</span>
+      <span style="flex:1;height:1px;background:var(--stroke,rgba(0,0,0,.1))"></span>
+      <span style="display:flex;align-items:center;gap:6px;color:var(--text-3,#8a8a8a)"><span style="width:18px;height:18px;border-radius:50%;border:1px solid var(--ctl-stroke,rgba(0,0,0,.2));display:flex;align-items:center;justify-content:center;font-size:10px">4</span>Names</span>
+    </div>
+    <div style="padding:14px 18px 16px">
+      <div style="font-size:17px;font-weight:600;letter-spacing:-.2px">Pair another PC</div>
+      <div style="font-size:12.5px;color:var(--text-2,#5c5c5c);margin-top:3px">Every PC runs screen-hop as an equal peer — there is no server.</div>
+
+      <div style="display:flex;gap:12px;margin-top:14px">
+        <div style="flex:1;border:1px solid var(--stroke,rgba(0,0,0,.08));border-radius:9px;background:var(--layer,#fff);padding:13px 14px">
+          <div style="font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--text-3,#8a8a8a)">THIS PC'S CODE</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+            <span style="font-family:ui-monospace,'Cascadia Mono',monospace;font-size:21px;font-weight:600;letter-spacing:1px;color:var(--text,#1a1a1a)">HOP-4F2A-9C7E</span>
+            <button style="width:28px;height:28px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text-2,#5c5c5c);display:flex;align-items:center;justify-content:center;cursor:pointer"><svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none"><use href="#i-copy"/></svg></button>
+          </div>
+          <div style="font-size:11.5px;color:var(--text-2,#5c5c5c);margin-top:9px;line-height:1.45">On the other PC: open screen-hop → <b>Add PC</b> → type this code.</div>
+        </div>
+        <div style="width:96px;border:1px solid var(--stroke,rgba(0,0,0,.08));border-radius:9px;background:var(--layer,#fff);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--text-2,#5c5c5c)">
+          <svg viewBox="0 0 24 24" style="width:42px;height:42px" fill="none"><use href="#i-qr"/></svg>
+          <span style="font-size:10px">Scan</span>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:12px;margin:15px 0">
+        <span style="flex:1;height:1px;background:var(--stroke,rgba(0,0,0,.08))"></span>
+        <span style="font-size:11px;color:var(--text-3,#8a8a8a)">or join from this PC</span>
+        <span style="flex:1;height:1px;background:var(--stroke,rgba(0,0,0,.08))"></span>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <div style="flex:1;display:flex;align-items:center;height:34px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--layer,#fff);padding:0 11px;font-family:ui-monospace,monospace;font-size:13px;color:var(--text-3,#8a8a8a)">HOP-____-____</div>
+        <button style="height:34px;padding:0 16px;border-radius:6px;border:1px solid transparent;background:var(--accent,#107c41);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Pair</button>
+      </div>
+
+      <details style="margin-top:12px">
+        <summary style="font-size:12px;font-weight:600;color:var(--accent-text,#0e6b36);cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px"><svg viewBox="0 0 24 24" style="width:13px;height:13px" fill="none"><use href="#i-plus"/></svg>Add a host manually (IP / hostname)</summary>
+        <div style="display:flex;gap:8px;margin-top:9px">
+          <div style="flex:1;display:flex;align-items:center;height:32px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--layer,#fff);padding:0 11px;font-size:12.5px;color:var(--text-3,#8a8a8a)">192.168.1.50</div>
+          <div style="width:78px;display:flex;align-items:center;height:32px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--layer,#fff);padding:0 11px;font-size:12.5px;color:var(--text-3,#8a8a8a)">7341</div>
+          <button style="height:32px;padding:0 14px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:12.5px;font-weight:600;cursor:pointer">Add</button>
+        </div>
+      </details>
+
+      <div style="margin-top:15px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--text-3,#8a8a8a);margin-bottom:8px">FOUND ON YOUR NETWORK</div>
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08));margin-bottom:7px">
+          <span style="width:30px;height:30px;border-radius:7px;background:rgba(58,111,176,.13);color:#3a6fb0;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:17px;height:17px" fill="none"><use href="#i-pc"/></svg></span>
+          <div style="flex:1"><div style="font-size:13px;font-weight:600">Gaming</div><div style="font-size:11px;color:var(--text-3,#8a8a8a);font-family:ui-monospace,monospace">192.168.1.42</div></div>
+          <button style="height:30px;padding:0 14px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:12px;font-weight:600;cursor:pointer">Pair</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08))">
+          <span style="width:30px;height:30px;border-radius:7px;background:rgba(14,138,138,.14);color:#0e8a8a;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:17px;height:17px" fill="none"><use href="#i-server"/></svg></span>
+          <div style="flex:1"><div style="font-size:13px;font-weight:600">Home-lab</div><div style="font-size:11px;color:var(--text-3,#8a8a8a);font-family:ui-monospace,monospace">192.168.1.17</div></div>
+          <span style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--ok-text,#0e6b36)"><svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none"><use href="#i-check"/></svg>Paired</span>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:13px 18px;border-top:1px solid var(--stroke,rgba(0,0,0,.07));background:var(--layer-2,#f6f6f6)">
+      <button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:13px;font-weight:600;cursor:pointer">Back</button>
+      <button style="height:32px;padding:0 18px;border-radius:6px;border:1px solid transparent;background:var(--accent,#107c41);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Next: monitors</button>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2: Discover -->
+<div style="position:absolute;left:710px;top:188px;width:470px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">b · Discover & confirm monitors</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.13);background:var(--bg,#f3f3f3);border:1px solid rgba(0,0,0,.08);color:var(--text,#1a1a1a);font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="display:flex;align-items:center;height:36px;padding:0 10px;background:var(--bg-2,#eaeaea);border-bottom:1px solid var(--stroke,rgba(0,0,0,.06))">
+      <span style="width:16px;height:16px;border-radius:4px;background:linear-gradient(160deg,#117c44,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:11px;height:11px;color:#fff" fill="none"><use href="#i-logo"/></svg></span>
+      <span style="font-size:11.5px;font-weight:600;color:var(--text-2,#5c5c5c);margin-left:8px">Set up screen-hop</span>
+    </div>
+    <div style="padding:16px 18px">
+      <div style="font-size:11.5px;font-weight:600;color:var(--text-3,#8a8a8a);margin-bottom:10px">Step 2 of 4 · Monitors</div>
+      <div style="font-size:17px;font-weight:600;letter-spacing:-.2px">Confirm your monitors</div>
+      <div style="font-size:12.5px;color:var(--text-2,#5c5c5c);margin-top:3px">We probe each display over DDC/CI. Uncheck any you don't want screen-hop to manage.</div>
+
+      <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:9px;background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08))">
+          <span style="width:20px;height:20px;border-radius:5px;background:var(--accent,#107c41);color:#fff;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:13px;height:13px" fill="none"><use href="#i-check"/></svg></span>
+          <span style="width:32px;height:32px;border-radius:7px;background:var(--subtle,#fbfbfb);border:1px solid var(--stroke,rgba(0,0,0,.08));color:var(--text-2,#5c5c5c);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-monitor"/></svg></span>
+          <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Left 27"</div><div style="font-size:11px;color:var(--text-3,#8a8a8a)">Dell U2723QE · DP-1 · 2560×1440</div></div>
+          <span style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--ok-text,#0e6b36);background:var(--ok-bg,#ecf6ef);padding:3px 8px;border-radius:11px"><svg viewBox="0 0 24 24" style="width:12px;height:12px" fill="none"><use href="#i-check"/></svg>DDC/CI</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:9px;background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08))">
+          <span style="width:20px;height:20px;border-radius:5px;background:var(--accent,#107c41);color:#fff;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:13px;height:13px" fill="none"><use href="#i-check"/></svg></span>
+          <span style="width:32px;height:32px;border-radius:7px;background:var(--subtle,#fbfbfb);border:1px solid var(--stroke,rgba(0,0,0,.08));color:var(--text-2,#5c5c5c);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-monitor"/></svg></span>
+          <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Center 32"</div><div style="font-size:11px;color:var(--text-3,#8a8a8a)">LG 32UN880 · HDMI-2 · 3840×2160</div></div>
+          <span style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--ok-text,#0e6b36);background:var(--ok-bg,#ecf6ef);padding:3px 8px;border-radius:11px"><svg viewBox="0 0 24 24" style="width:12px;height:12px" fill="none"><use href="#i-check"/></svg>DDC/CI</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:9px;background:var(--warn-bg,#fff7ea);border:1px solid var(--warn-stroke,#efd9ae)">
+          <span style="width:20px;height:20px;border-radius:5px;background:var(--subtle,#fbfbfb);border:1px solid var(--ctl-stroke,rgba(0,0,0,.2));display:flex;align-items:center;justify-content:center"></span>
+          <span style="width:32px;height:32px;border-radius:7px;background:var(--layer,#fff);border:1px solid var(--warn-stroke,#efd9ae);color:var(--warn-accent,#b26a00);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-monitor"/></svg></span>
+          <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Right 27"</div><div style="font-size:11px;color:var(--warn-text,#8a5300)">Dell U2723QE · DP-2 · not responding to DDC/CI</div></div>
+          <button style="font-size:11.5px;font-weight:600;color:var(--warn-text,#8a5300);background:transparent;border:none;cursor:pointer;text-decoration:underline">Fix</button>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;margin-top:13px;font-size:11.5px;color:var(--text-3,#8a8a8a)"><svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none"><use href="#i-info"/></svg>3 detected · 2 ready · 1 needs DDC/CI enabled in its menu.</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:13px 18px;border-top:1px solid var(--stroke,rgba(0,0,0,.07));background:var(--layer-2,#f6f6f6)">
+      <button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:13px;font-weight:600;cursor:pointer">Back</button>
+      <button style="height:32px;padding:0 18px;border-radius:6px;border:1px solid transparent;background:var(--accent,#107c41);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Next: calibrate</button>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3: Calibrate (hero of onboarding) -->
+<div style="position:absolute;left:1230px;top:188px;width:660px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">c · Calibration — the non-obvious step</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.13);background:var(--bg,#f3f3f3);border:1px solid rgba(0,0,0,.08);color:var(--text,#1a1a1a);font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="display:flex;align-items:center;height:36px;padding:0 10px;background:var(--bg-2,#eaeaea);border-bottom:1px solid var(--stroke,rgba(0,0,0,.06))">
+      <span style="width:16px;height:16px;border-radius:4px;background:linear-gradient(160deg,#117c44,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:11px;height:11px;color:#fff" fill="none"><use href="#i-logo"/></svg></span>
+      <span style="font-size:11.5px;font-weight:600;color:var(--text-2,#5c5c5c);margin-left:8px">Set up screen-hop</span>
+    </div>
+    <div style="padding:16px 18px">
+      <div style="font-size:11.5px;font-weight:600;color:var(--text-3,#8a8a8a);margin-bottom:10px">Step 3 of 4 · Calibrate</div>
+      <div style="font-size:17px;font-weight:600;letter-spacing:-.2px">Teach each PC its input on each monitor</div>
+      <div style="font-size:12.5px;color:var(--text-2,#5c5c5c);margin-top:4px;line-height:1.5">screen-hop can only read a PC's input code for a monitor <b>while that PC is the one showing on it</b>. Make each PC active on each monitor once. You may need to press the monitor's physical Input button to bootstrap the first time.</div>
+
+      <!-- matrix -->
+      <div style="margin-top:15px;border:1px solid var(--stroke,rgba(0,0,0,.08));border-radius:10px;overflow:hidden;background:var(--layer,#fff)">
+        <div style="display:grid;grid-template-columns:130px 1fr 1fr 1fr">
+          <div style="padding:10px 12px;font-size:10.5px;font-weight:700;letter-spacing:.4px;color:var(--text-3,#8a8a8a);background:var(--layer-2,#f6f6f6);border-bottom:1px solid var(--stroke,rgba(0,0,0,.07))"></div>
+          <div style="padding:10px 8px;text-align:center;font-size:12px;font-weight:600;background:var(--layer-2,#f6f6f6);border-bottom:1px solid var(--stroke,rgba(0,0,0,.07));border-left:1px solid var(--stroke,rgba(0,0,0,.05))"><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:50%;background:#117c44"></span>Work</span></div>
+          <div style="padding:10px 8px;text-align:center;font-size:12px;font-weight:600;background:var(--layer-2,#f6f6f6);border-bottom:1px solid var(--stroke,rgba(0,0,0,.07));border-left:1px solid var(--stroke,rgba(0,0,0,.05))"><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:50%;background:#3a6fb0"></span>Gaming</span></div>
+          <div style="padding:10px 8px;text-align:center;font-size:12px;font-weight:600;background:var(--layer-2,#f6f6f6);border-bottom:1px solid var(--stroke,rgba(0,0,0,.07));border-left:1px solid var(--stroke,rgba(0,0,0,.05))"><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:50%;background:#0e8a8a"></span>Home-lab</span></div>
+
+          <div style="padding:13px 12px;font-size:12.5px;font-weight:600;border-bottom:1px solid var(--stroke,rgba(0,0,0,.06));display:flex;align-items:center;gap:7px"><svg viewBox="0 0 24 24" style="width:15px;height:15px;color:var(--text-3,#8a8a8a)" fill="none"><use href="#i-monitor"/></svg>Left 27"</div>
+          <div style="padding:13px 8px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--stroke,rgba(0,0,0,.06));border-left:1px solid var(--stroke,rgba(0,0,0,.05))"><span style="display:inline-flex;align-items:center;gap:5px;color:var(--ok-text,#0e6b36);font-size:11.5px;font-weight:600"><svg viewBox="0 0 24 24" style="width:15px;height:15px" fill="none"><use href="#i-check"/></svg>Confirmed</span></div>
+          <div style="padding:13px 8px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--stroke,rgba(0,0,0,.06));border-left:1px solid var(--stroke,rgba(0,0,0,.05))"><span style="font-size:11px;color:var(--text-3,#8a8a8a)">— unknown</span></div>
+          <div style="padding:13px 8px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--stroke,rgba(0,0,0,.06));border-left:1px solid var(--stroke,rgba(0,0,0,.05))"><span style="font-size:11px;color:var(--text-3,#8a8a8a)">— unknown</span></div>
+
+          <div style="padding:13px 12px;font-size:12.5px;font-weight:600;border-bottom:1px solid var(--stroke,rgba(0,0,0,.06));display:flex;align-items:center;gap:7px"><svg viewBox="0 0 24 24" style="width:15px;height:15px;color:var(--text-3,#8a8a8a)" fill="none"><use href="#i-monitor"/></svg>Center 32"</div>
+          <div style="padding:13px 8px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--stroke,rgba(0,0,0,.06));border-left:1px solid var(--stroke,rgba(0,0,0,.05))"><span style="display:inline-flex;align-items:center;gap:5px;color:var(--ok-text,#0e6b36);font-size:11.5px;font-weight:600"><svg viewBox="0 0 24 24" style="width:15px;height:15px" fill="none"><use href="#i-check"/></svg>Confirmed</span></div>
+          <div style="padding:13px 8px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--stroke,rgba(0,0,0,.06));border-left:1px solid var(--stroke,rgba(0,0,0,.05))"><span style="display:inline-flex;align-items:center;gap:5px;color:var(--ok-text,#0e6b36);font-size:11.5px;font-weight:600"><svg viewBox="0 0 24 24" style="width:15px;height:15px" fill="none"><use href="#i-check"/></svg>Confirmed</span></div>
+          <div style="padding:10px 8px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--stroke,rgba(0,0,0,.06));border-left:1px solid var(--stroke,rgba(0,0,0,.05));background:var(--accent-soft,#e8f3ec)"><span style="display:inline-flex;align-items:center;gap:6px;color:var(--accent-text,#0e6b36);font-size:11px;font-weight:700"><svg viewBox="0 0 24 24" style="width:14px;height:14px;animation:sh-spin 1s linear infinite" fill="none"><use href="#i-refresh"/></svg>Learning…</span></div>
+
+          <div style="padding:13px 12px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px"><svg viewBox="0 0 24 24" style="width:15px;height:15px;color:var(--text-3,#8a8a8a)" fill="none"><use href="#i-monitor"/></svg>Right 27"</div>
+          <div style="padding:13px 8px;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--stroke,rgba(0,0,0,.05))"><span style="display:inline-flex;align-items:center;gap:5px;color:var(--ok-text,#0e6b36);font-size:11.5px;font-weight:600"><svg viewBox="0 0 24 24" style="width:15px;height:15px" fill="none"><use href="#i-check"/></svg>Confirmed</span></div>
+          <div style="padding:13px 8px;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--stroke,rgba(0,0,0,.05))"><span style="display:inline-flex;align-items:center;gap:5px;color:var(--ok-text,#0e6b36);font-size:11.5px;font-weight:600"><svg viewBox="0 0 24 24" style="width:15px;height:15px" fill="none"><use href="#i-check"/></svg>Confirmed</span></div>
+          <div style="padding:13px 8px;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--stroke,rgba(0,0,0,.05))"><span style="font-size:11px;color:var(--text-3,#8a8a8a)">— unknown</span></div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:12px;margin-top:13px">
+        <div style="flex:1;height:7px;border-radius:4px;background:var(--subtle-press,#e8e8e8);overflow:hidden"><div style="width:56%;height:100%;background:var(--accent,#107c41)"></div></div>
+        <span style="font-size:12px;font-weight:600;color:var(--text-2,#5c5c5c);white-space:nowrap">5 of 9 learned</span>
+      </div>
+
+      <div style="display:flex;gap:11px;align-items:flex-start;margin-top:13px;padding:12px 14px;border-radius:9px;background:var(--accent-soft,#e8f3ec);border:1px solid var(--accent-soft-stroke,#bfe0cb)">
+        <svg viewBox="0 0 24 24" style="width:18px;height:18px;flex:none;margin-top:1px;color:var(--accent-text,#0e6b36)" fill="none"><use href="#i-arrow-r"/></svg>
+        <div><div style="font-size:13px;font-weight:600;color:var(--accent-text,#0e6b36)">Now: make Home-lab show on Center 32"</div><div style="font-size:11.5px;color:var(--text-2,#5c5c5c);margin-top:2px;line-height:1.45">Switch Home-lab onto it (or press the monitor's Input button). screen-hop reads the input the moment it appears.</div></div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:13px 18px;border-top:1px solid var(--stroke,rgba(0,0,0,.07));background:var(--layer-2,#f6f6f6)">
+      <span style="font-size:11.5px;color:var(--text-3,#8a8a8a)">You can finish later — unknown pairs just can't be auto-switched yet.</span>
+      <button style="height:32px;padding:0 18px;border-radius:6px;border:1px solid transparent;background:var(--accent,#107c41);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Next: names</button>
+    </div>
+  </div>
+</div>
+
+<!-- Step 4: Label -->
+<div style="position:absolute;left:1940px;top:188px;width:560px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">d · Label look-alike monitors</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.13);background:var(--bg,#f3f3f3);border:1px solid rgba(0,0,0,.08);color:var(--text,#1a1a1a);font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="display:flex;align-items:center;height:36px;padding:0 10px;background:var(--bg-2,#eaeaea);border-bottom:1px solid var(--stroke,rgba(0,0,0,.06))">
+      <span style="width:16px;height:16px;border-radius:4px;background:linear-gradient(160deg,#117c44,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:11px;height:11px;color:#fff" fill="none"><use href="#i-logo"/></svg></span>
+      <span style="font-size:11.5px;font-weight:600;color:var(--text-2,#5c5c5c);margin-left:8px">Set up screen-hop</span>
+    </div>
+    <div style="padding:16px 18px">
+      <div style="font-size:11.5px;font-weight:600;color:var(--text-3,#8a8a8a);margin-bottom:10px">Step 4 of 4 · Names</div>
+      <div style="font-size:17px;font-weight:600;letter-spacing:-.2px">Name your look-alikes</div>
+      <div style="font-size:12.5px;color:var(--text-2,#5c5c5c);margin-top:3px">Two identical <b>Dell U2723QE</b> share the same name. Flash each one to see which is which, then label it.</div>
+
+      <div style="display:flex;gap:12px;margin-top:15px">
+        <div style="flex:1;border:2px solid var(--accent,#107c41);border-radius:10px;background:var(--layer,#fff);padding:13px;animation:sh-pulse 1.6s ease-out infinite">
+          <div style="height:62px;border-radius:7px;background:linear-gradient(135deg,var(--accent,#107c41),var(--accent-press,#0c5e32));display:flex;align-items:center;justify-content:center;color:#fff;animation:sh-flash 1.1s ease-in-out infinite"><svg viewBox="0 0 24 24" style="width:26px;height:26px" fill="none"><use href="#i-bolt"/></svg></div>
+          <button style="width:100%;height:30px;margin-top:11px;border-radius:6px;border:1px solid var(--accent-soft-stroke,#bfe0cb);background:var(--accent-soft,#e8f3ec);color:var(--accent-text,#0e6b36);font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none"><use href="#i-identify"/></svg>Flashing…</button>
+          <div style="margin-top:9px;display:flex;align-items:center;height:32px;border-radius:6px;border:1px solid var(--accent,#107c41);background:var(--layer,#fff);padding:0 10px;font-size:13px;font-weight:600">Left 27"</div>
+        </div>
+        <div style="flex:1;border:1px solid var(--stroke,rgba(0,0,0,.08));border-radius:10px;background:var(--layer,#fff);padding:13px">
+          <div style="height:62px;border-radius:7px;background:var(--subtle-press,#e8e8e8);display:flex;align-items:center;justify-content:center;color:var(--text-3,#8a8a8a)"><svg viewBox="0 0 24 24" style="width:24px;height:24px" fill="none"><use href="#i-monitor"/></svg></div>
+          <button style="width:100%;height:30px;margin-top:11px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none"><use href="#i-identify"/></svg>Flash to identify</button>
+          <div style="margin-top:9px;display:flex;align-items:center;height:32px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--layer,#fff);padding:0 10px;font-size:13px;font-weight:600">Right 27"</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:13px;font-size:11.5px;color:var(--text-3,#8a8a8a)"><svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none"><use href="#i-info"/></svg>Flashing inverts the monitor briefly so you can spot it on your desk.</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:13px 18px;border-top:1px solid var(--stroke,rgba(0,0,0,.07));background:var(--layer-2,#f6f6f6)">
+      <button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:13px;font-weight:600;cursor:pointer">Back</button>
+      <button style="height:32px;padding:0 18px;border-radius:6px;border:1px solid transparent;background:var(--accent,#107c41);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Finish setup</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SECTION: CRITICAL STATES ============ -->
+<div style="position:absolute;left:60px;top:760px;font:700 13px 'Segoe UI',system-ui;letter-spacing:1.5px;color:#8a8a8a">CRITICAL STATES · THE HONESTY SCREENS</div>
+<div style="position:absolute;left:330px;top:761px;font:13px 'Segoe UI',system-ui;color:#9a9a9a">— states that can go wrong, told plainly. Never faked instant, never hidden.</div>
+
+<!-- D1 Switching progress (with retry) -->
+<div style="position:absolute;left:60px;top:822px;width:430px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">Switching · in progress (can retry)</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.17);background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08));color:var(--text,#1a1a1a);font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="padding:20px 22px 6px;display:flex;gap:14px">
+      <div style="width:38px;height:38px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:var(--accent-soft,#e8f3ec);color:var(--accent,#107c41)"><svg viewBox="0 0 24 24" style="width:21px;height:21px;animation:sh-spin 1s linear infinite" fill="none"><use href="#i-refresh"/></svg></div>
+      <div style="flex:1">
+        <div style="font-size:16px;font-weight:600">Switching Center 32"</div>
+        <div style="display:flex;align-items:center;gap:7px;margin-top:6px;font-size:12px">
+          <span style="display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:11px;background:var(--subtle,#fbfbfb);border:1px solid var(--stroke,rgba(0,0,0,.08))"><span style="width:6px;height:6px;border-radius:50%;background:#3a6fb0"></span>Gaming</span>
+          <svg viewBox="0 0 24 24" style="width:14px;height:14px;color:var(--text-3,#8a8a8a)" fill="none"><use href="#i-arrow-r"/></svg>
+          <span style="display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:11px;background:var(--accent-soft,#e8f3ec);border:1px solid var(--accent-soft-stroke,#bfe0cb);color:var(--accent-text,#0e6b36)"><span style="width:6px;height:6px;border-radius:50%;background:#117c44"></span>Work</span>
+        </div>
+      </div>
+    </div>
+    <div style="padding:12px 22px 4px;display:flex;flex-direction:column;gap:11px">
+      <div style="display:flex;align-items:center;gap:10px"><span style="width:18px;height:18px;border-radius:50%;background:var(--ok-bg,#ecf6ef);color:var(--ok-text,#0e6b36);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:12px;height:12px" fill="none"><use href="#i-check"/></svg></span><span style="font-size:13px;color:var(--text-2,#5c5c5c)">Sent DDC/CI input command</span></div>
+      <div style="display:flex;align-items:center;gap:10px"><span style="width:18px;height:18px;border-radius:50%;border:2px solid var(--accent,#107c41);border-right-color:transparent;animation:sh-spin .8s linear infinite"></span><span style="font-size:13px;font-weight:600">Waiting for monitor to switch</span><span style="margin-left:auto;font-size:11px;font-weight:600;color:var(--warn-text,#8a5300);background:var(--warn-bg,#fff7ea);border:1px solid var(--warn-stroke,#efd9ae);padding:2px 8px;border-radius:10px">Retrying · attempt 2 of 3</span></div>
+      <div style="display:flex;align-items:center;gap:10px"><span style="width:18px;height:18px;border-radius:50%;border:2px solid var(--ctl-stroke,rgba(0,0,0,.18))"></span><span style="font-size:13px;color:var(--text-3,#8a8a8a)">Verify active input</span></div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 22px 18px;margin-top:8px">
+      <span style="display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-3,#8a8a8a)"><svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none"><use href="#i-info"/></svg>Takes 1–3s. Some monitors are slow.</span>
+      <button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:13px;font-weight:600;cursor:pointer">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- D2 You'll be blind -->
+<div style="position:absolute;left:530px;top:822px;width:430px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">You'll be blind · confirm before losing your last screen</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.17);background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08));color:var(--text,#1a1a1a);font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="padding:20px 22px 6px;display:flex;gap:14px">
+      <div style="width:38px;height:38px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:var(--danger-bg,#fdf1f0);color:var(--danger,#c42b1c)"><svg viewBox="0 0 24 24" style="width:21px;height:21px" fill="none"><use href="#i-alert"/></svg></div>
+      <div style="flex:1">
+        <div style="font-size:16px;font-weight:600">This PC will go blind</div>
+        <div style="font-size:12.5px;line-height:1.5;color:var(--text-2,#5c5c5c);margin-top:6px">Sending <b>Right 27"</b> to Gaming leaves <b>Work</b> (this PC) with no display. You won't see this screen after the switch.</div>
+        <div style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding:9px 11px;border-radius:7px;background:var(--warn-bg,#fff7ea);border:1px solid var(--warn-stroke,#efd9ae)"><svg viewBox="0 0 24 24" style="width:15px;height:15px;flex:none;margin-top:1px;color:var(--warn-accent,#b26a00)" fill="none"><use href="#i-info"/></svg><span style="font-size:12px;line-height:1.45;color:var(--warn-text,#8a5300)">Keep at least one monitor on Work, or have another PC ready to switch it back.</span></div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:9px;padding:18px 22px 20px">
+      <button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:13px;font-weight:600;cursor:pointer">Cancel</button>
+      <button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid transparent;background:var(--danger,#c42b1c);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Switch and go blind</button>
+    </div>
+  </div>
+</div>
+
+<!-- D3 Stranded -->
+<div style="position:absolute;left:1000px;top:822px;width:430px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">Stranded · no software fix, use the physical button</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.17);background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08));color:var(--text,#1a1a1a);font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="padding:20px 22px 6px;display:flex;gap:14px">
+      <div style="width:38px;height:38px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:var(--warn-bg,#fff7ea);color:var(--warn-accent,#b26a00)"><svg viewBox="0 0 24 24" style="width:21px;height:21px" fill="none"><use href="#i-alert"/></svg></div>
+      <div style="flex:1">
+        <div style="font-size:16px;font-weight:600">Center 32" is stranded</div>
+        <div style="font-size:12.5px;line-height:1.5;color:var(--text-2,#5c5c5c);margin-top:6px">It's driven by <b>Home-lab</b>, which is offline or asleep. Software can't pull a monitor away from an unreachable PC.</div>
+        <div style="display:flex;gap:9px;align-items:flex-start;margin-top:12px;padding:11px;border-radius:7px;background:var(--bg-2,#eaeaea)"><svg viewBox="0 0 24 24" style="width:16px;height:16px;flex:none;margin-top:1px;color:var(--text-2,#5c5c5c)" fill="none"><use href="#i-power"/></svg><span style="font-size:12px;line-height:1.5;color:var(--text-2,#5c5c5c)">Press the monitor's <b>Input / Source</b> button on the bezel and choose this PC's connector (<b>HDMI-2</b>).</span></div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:9px;padding:18px 22px 20px">
+      <button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:13px;font-weight:600;cursor:pointer">Retry detection</button>
+      <button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid transparent;background:var(--accent,#107c41);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Got it</button>
+    </div>
+  </div>
+</div>
+
+<!-- D4 DDC/CI disabled -->
+<div style="position:absolute;left:1470px;top:822px;width:430px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">DDC/CI disabled · enable it in the monitor's menu</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.17);background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08));color:var(--text,#1a1a1a);font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="padding:20px 22px 6px;display:flex;gap:14px">
+      <div style="width:38px;height:38px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:var(--danger-bg,#fdf1f0);color:var(--danger,#c42b1c)"><svg viewBox="0 0 24 24" style="width:21px;height:21px" fill="none"><use href="#i-close"/></svg></div>
+      <div style="flex:1">
+        <div style="font-size:16px;font-weight:600">Right 27" isn't responding</div>
+        <div style="font-size:12.5px;line-height:1.5;color:var(--text-2,#5c5c5c);margin-top:6px">This monitor ignored DDC/CI commands. It's usually off in the on-screen menu.</div>
+      </div>
+    </div>
+    <div style="margin:4px 22px 0;padding:12px 14px;border-radius:8px;background:var(--layer-2,#f6f6f6);border:1px solid var(--stroke,rgba(0,0,0,.07))">
+      <div style="font-size:10.5px;font-weight:700;letter-spacing:.4px;color:var(--text-3,#8a8a8a);margin-bottom:8px">ON THE MONITOR</div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-family:ui-monospace,monospace;color:var(--text,#1a1a1a)"><span style="padding:2px 8px;border-radius:5px;background:var(--subtle,#fbfbfb);border:1px solid var(--stroke,rgba(0,0,0,.1))">Menu</span><svg viewBox="0 0 24 24" style="width:13px;height:13px;color:var(--text-3,#8a8a8a)" fill="none"><use href="#i-chev-r"/></svg><span style="padding:2px 8px;border-radius:5px;background:var(--subtle,#fbfbfb);border:1px solid var(--stroke,rgba(0,0,0,.1))">Others</span><svg viewBox="0 0 24 24" style="width:13px;height:13px;color:var(--text-3,#8a8a8a)" fill="none"><use href="#i-chev-r"/></svg><span style="padding:2px 8px;border-radius:5px;background:var(--subtle,#fbfbfb);border:1px solid var(--stroke,rgba(0,0,0,.1))">DDC/CI</span><svg viewBox="0 0 24 24" style="width:13px;height:13px;color:var(--text-3,#8a8a8a)" fill="none"><use href="#i-chev-r"/></svg><span style="padding:2px 8px;border-radius:5px;background:var(--accent-soft,#e8f3ec);border:1px solid var(--accent-soft-stroke,#bfe0cb);color:var(--accent-text,#0e6b36);font-weight:600">On</span></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:9px;padding:16px 22px 20px">
+      <button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:13px;font-weight:600;cursor:pointer">Skip this monitor</button>
+      <button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid transparent;background:var(--accent,#107c41);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Retry</button>
+    </div>
+  </div>
+</div>
+
+<!-- D5 Preset partial failure -->
+<div style="position:absolute;left:1940px;top:822px;width:440px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">Preset partial failure · best-effort, per-monitor</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.17);background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08));color:var(--text,#1a1a1a);font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="padding:18px 22px 12px;display:flex;gap:13px;align-items:flex-start">
+      <div style="width:34px;height:34px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:var(--warn-bg,#fff7ea);color:var(--warn-accent,#b26a00)"><svg viewBox="0 0 24 24" style="width:19px;height:19px" fill="none"><use href="#i-alert"/></svg></div>
+      <div style="flex:1"><div style="font-size:15.5px;font-weight:600">Applied "Trading" — 2 of 3 switched</div><div style="font-size:12px;color:var(--text-2,#5c5c5c);margin-top:3px">One monitor didn't respond. Retry it below.</div></div>
+    </div>
+    <div style="padding:0 22px">
+      <div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid var(--stroke,rgba(0,0,0,.07))"><span style="width:24px;height:24px;border-radius:50%;background:var(--ok-bg,#ecf6ef);color:var(--ok-text,#0e6b36);display:flex;align-items:center;justify-content:center;flex:none"><svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none"><use href="#i-check"/></svg></span><div style="flex:1"><div style="font-size:13px;font-weight:600">Center 32" → Gaming</div><div style="font-size:11px;color:var(--ok-text,#0e6b36)">Switched</div></div></div>
+      <div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid var(--stroke,rgba(0,0,0,.07))"><span style="width:24px;height:24px;border-radius:50%;background:var(--ok-bg,#ecf6ef);color:var(--ok-text,#0e6b36);display:flex;align-items:center;justify-content:center;flex:none"><svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none"><use href="#i-check"/></svg></span><div style="flex:1"><div style="font-size:13px;font-weight:600">Left 27" → Work</div><div style="font-size:11px;color:var(--ok-text,#0e6b36)">Switched</div></div></div>
+      <div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid var(--stroke,rgba(0,0,0,.07))"><span style="width:24px;height:24px;border-radius:50%;background:var(--danger-bg,#fdf1f0);color:var(--danger,#c42b1c);display:flex;align-items:center;justify-content:center;flex:none"><svg viewBox="0 0 24 24" style="width:13px;height:13px" fill="none"><use href="#i-close"/></svg></span><div style="flex:1"><div style="font-size:13px;font-weight:600">Right 27" → Work</div><div style="font-size:11px;color:var(--danger-text,#b22a1c)">DDC/CI timeout</div></div><button style="height:28px;padding:0 12px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:12px;font-weight:600;cursor:pointer">Retry</button></div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 22px 18px;margin-top:4px"><span style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-3,#8a8a8a)"><svg viewBox="0 0 24 24" style="width:13px;height:13px" fill="none"><use href="#i-info"/></svg>Presets are best-effort, not all-or-nothing.</span><button style="height:32px;padding:0 18px;border-radius:6px;border:1px solid transparent;background:var(--accent,#107c41);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Done</button></div>
+  </div>
+</div>
+
+<!-- D6 Partition / degraded -->
+<div style="position:absolute;left:2420px;top:822px;width:440px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">Partition / degraded · disruptive actions paused</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.17);background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08));color:var(--text,#1a1a1a);font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="height:4px;background:var(--warn-accent,#e7a93c)"></div>
+    <div style="padding:18px 22px 6px;display:flex;gap:14px">
+      <div style="width:38px;height:38px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:var(--warn-bg,#fff7ea);color:var(--warn-accent,#b26a00)"><svg viewBox="0 0 24 24" style="width:21px;height:21px" fill="none"><use href="#i-net"/></svg></div>
+      <div style="flex:1"><div style="font-size:16px;font-weight:600">Network degraded</div><div style="font-size:12.5px;line-height:1.5;color:var(--text-2,#5c5c5c);margin-top:5px"><b>Home-lab</b> is unreachable. To avoid stranding a monitor, switches that involve it are paused until it's back.</div></div>
+    </div>
+    <div style="padding:6px 22px 4px;display:flex;flex-direction:column;gap:7px">
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:7px;background:var(--ok-bg,#ecf6ef)"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok-text,#0e6b36)"></span><span style="font-size:12.5px;font-weight:600;flex:1">Work · Gaming</span><span style="font-size:11px;color:var(--ok-text,#0e6b36);font-weight:600">reachable</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:7px;background:var(--warn-bg,#fff7ea)"><span style="width:7px;height:7px;border-radius:50%;background:var(--warn-accent,#e7a93c)"></span><span style="font-size:12.5px;font-weight:600;flex:1">Home-lab</span><span style="font-size:11px;color:var(--warn-text,#8a5300);font-weight:600">unreachable · 38s</span></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:9px;padding:16px 22px 18px"><button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:13px;font-weight:600;cursor:pointer">Dismiss</button><button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid transparent;background:var(--accent,#107c41);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Retry now</button></div>
+  </div>
+</div>
+<!-- ============ SECTION: PRESETS + SETTINGS ============ -->
+<div style="position:absolute;left:60px;top:1230px;font:700 13px 'Segoe UI',system-ui;letter-spacing:1.5px;color:#8a8a8a">PRESET MANAGER · SETTINGS</div>
+
+<!-- Preset manager -->
+<div style="position:absolute;left:60px;top:1270px;width:600px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">Presets · capture / apply / edit / delete</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 12px 36px rgba(0,0,0,.14);background:var(--bg,#f3f3f3);border:1px solid rgba(0,0,0,.08);color:var(--text,#1a1a1a);font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="display:flex;align-items:center;height:36px;padding:0 10px;background:var(--bg-2,#eaeaea);border-bottom:1px solid var(--stroke,rgba(0,0,0,.06))">
+      <span style="width:16px;height:16px;border-radius:4px;background:linear-gradient(160deg,#117c44,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:11px;height:11px;color:#fff" fill="none"><use href="#i-logo"/></svg></span>
+      <span style="font-size:11.5px;font-weight:600;color:var(--text-2,#5c5c5c);margin-left:8px">screen-hop — Presets</span>
+    </div>
+    <div style="padding:16px 18px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div><div style="font-size:18px;font-weight:600;letter-spacing:-.2px">Presets</div><div style="font-size:12px;color:var(--text-3,#8a8a8a);margin-top:1px">One click applies a saved monitor → PC layout.</div></div>
+        <button style="display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 14px;border-radius:7px;border:1px solid transparent;background:var(--accent,#107c41);color:#fff;font-size:13px;font-weight:600;cursor:pointer"><svg viewBox="0 0 24 24" style="width:15px;height:15px" fill="none"><use href="#i-plus"/></svg>Capture current layout</button>
+      </div>
+
+      <div style="margin-top:15px;display:flex;flex-direction:column;gap:9px">
+        <!-- Work -->
+        <div style="display:flex;align-items:center;gap:13px;padding:12px 14px;border-radius:10px;background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08))">
+          <span style="width:34px;height:34px;border-radius:8px;background:var(--subtle,#fbfbfb);border:1px solid var(--stroke,rgba(0,0,0,.08));color:var(--text-2,#5c5c5c);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-preset"/></svg></span>
+          <div style="width:108px"><div style="display:flex;align-items:center;gap:7px"><span style="font-size:14px;font-weight:600">Work</span></div><div style="font-size:11px;color:var(--text-3,#8a8a8a);margin-top:2px;font-family:ui-monospace,monospace">Ctrl+Alt+1</div></div>
+          <div style="display:flex;gap:4px">
+            <span style="width:26px;height:17px;border-radius:3px;background:#117c44;opacity:.92"></span><span style="width:26px;height:17px;border-radius:3px;background:#117c44;opacity:.92"></span><span style="width:26px;height:17px;border-radius:3px;background:#117c44;opacity:.92"></span>
+          </div>
+          <span style="font-size:11.5px;color:var(--text-3,#8a8a8a);margin-left:auto">Yesterday</span>
+          <button style="height:30px;padding:0 15px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:12.5px;font-weight:600;cursor:pointer">Apply</button>
+          <button style="width:30px;height:30px;border-radius:6px;border:none;background:transparent;color:var(--text-3,#8a8a8a);display:flex;align-items:center;justify-content:center;cursor:pointer"><svg viewBox="0 0 24 24" style="width:16px;height:16px"><use href="#i-more"/></svg></button>
+        </div>
+        <!-- Trading (active) -->
+        <div style="display:flex;align-items:center;gap:13px;padding:12px 14px;border-radius:10px;background:var(--accent-soft,#e8f3ec);border:1px solid var(--accent-soft-stroke,#bfe0cb)">
+          <span style="width:34px;height:34px;border-radius:8px;background:var(--accent,#107c41);color:#fff;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-preset"/></svg></span>
+          <div style="width:108px"><div style="display:flex;align-items:center;gap:7px"><span style="font-size:14px;font-weight:600">Trading</span></div><div style="font-size:11px;color:var(--text-3,#8a8a8a);margin-top:2px;font-family:ui-monospace,monospace">Ctrl+Alt+2</div></div>
+          <div style="display:flex;gap:4px">
+            <span style="width:26px;height:17px;border-radius:3px;background:#117c44"></span><span style="width:26px;height:17px;border-radius:3px;background:#3a6fb0"></span><span style="width:26px;height:17px;border-radius:3px;background:#117c44"></span>
+          </div>
+          <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--accent-text,#0e6b36);margin-left:auto"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent,#107c41)"></span>Active now</span>
+          <button style="height:30px;padding:0 15px;border-radius:6px;border:1px solid transparent;background:var(--accent,#107c41);color:#fff;font-size:12.5px;font-weight:600;cursor:pointer">Re-apply</button>
+          <button style="width:30px;height:30px;border-radius:6px;border:none;background:transparent;color:var(--text-3,#8a8a8a);display:flex;align-items:center;justify-content:center;cursor:pointer"><svg viewBox="0 0 24 24" style="width:16px;height:16px"><use href="#i-more"/></svg></button>
+        </div>
+        <!-- Couch -->
+        <div style="display:flex;align-items:center;gap:13px;padding:12px 14px;border-radius:10px;background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08))">
+          <span style="width:34px;height:34px;border-radius:8px;background:var(--subtle,#fbfbfb);border:1px solid var(--stroke,rgba(0,0,0,.08));color:var(--text-2,#5c5c5c);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-preset"/></svg></span>
+          <div style="width:108px"><div style="font-size:14px;font-weight:600">Couch</div><div style="font-size:11px;color:var(--text-3,#8a8a8a);margin-top:2px;font-family:ui-monospace,monospace">Ctrl+Alt+3</div></div>
+          <div style="display:flex;gap:4px">
+            <span style="width:26px;height:17px;border-radius:3px;background:#3a6fb0"></span><span style="width:26px;height:17px;border-radius:3px;background:#3a6fb0"></span><span style="width:26px;height:17px;border-radius:3px;background:#3a6fb0"></span>
+          </div>
+          <span style="font-size:11.5px;color:var(--text-3,#8a8a8a);margin-left:auto">3 days ago</span>
+          <button style="height:30px;padding:0 15px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:12.5px;font-weight:600;cursor:pointer">Apply</button>
+          <button style="width:30px;height:30px;border-radius:6px;border:none;background:transparent;color:var(--text-3,#8a8a8a);display:flex;align-items:center;justify-content:center;cursor:pointer"><svg viewBox="0 0 24 24" style="width:16px;height:16px"><use href="#i-more"/></svg></button>
+        </div>
+        <!-- Pair -->
+        <div style="display:flex;align-items:center;gap:13px;padding:12px 14px;border-radius:10px;background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08))">
+          <span style="width:34px;height:34px;border-radius:8px;background:var(--subtle,#fbfbfb);border:1px solid var(--stroke,rgba(0,0,0,.08));color:var(--text-2,#5c5c5c);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-preset"/></svg></span>
+          <div style="width:108px"><div style="font-size:14px;font-weight:600">Pair</div><div style="font-size:11px;color:var(--text-3,#8a8a8a);margin-top:2px;font-family:ui-monospace,monospace">Ctrl+Alt+4</div></div>
+          <div style="display:flex;gap:4px">
+            <span style="width:26px;height:17px;border-radius:3px;background:#117c44"></span><span style="width:26px;height:17px;border-radius:3px;background:#0e8a8a"></span><span style="width:26px;height:17px;border-radius:3px;background:#3a6fb0"></span>
+          </div>
+          <span style="font-size:11.5px;color:var(--text-3,#8a8a8a);margin-left:auto">1 week ago</span>
+          <button style="height:30px;padding:0 15px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:12.5px;font-weight:600;cursor:pointer">Apply</button>
+          <button style="width:30px;height:30px;border-radius:6px;border:none;background:transparent;color:var(--text-3,#8a8a8a);display:flex;align-items:center;justify-content:center;cursor:pointer"><svg viewBox="0 0 24 24" style="width:16px;height:16px"><use href="#i-more"/></svg></button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:13px;font-size:11px;color:var(--text-3,#8a8a8a)"><svg viewBox="0 0 24 24" style="width:13px;height:13px" fill="none"><use href="#i-info"/></svg>Drag to reorder · the colored bars show which PC drives Left / Center / Right.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div style="position:absolute;left:720px;top:1270px;width:720px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">Settings · peers, hosts, autostart, theme, DDC timing</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 12px 36px rgba(0,0,0,.14);background:var(--bg,#f3f3f3);border:1px solid rgba(0,0,0,.08);color:var(--text,#1a1a1a);font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="display:flex;align-items:center;height:36px;padding:0 10px;background:var(--bg-2,#eaeaea);border-bottom:1px solid var(--stroke,rgba(0,0,0,.06))">
+      <span style="width:16px;height:16px;border-radius:4px;background:linear-gradient(160deg,#117c44,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:11px;height:11px;color:#fff" fill="none"><use href="#i-logo"/></svg></span>
+      <span style="font-size:11.5px;font-weight:600;color:var(--text-2,#5c5c5c);margin-left:8px">screen-hop — Settings</span>
+    </div>
+    <div style="display:flex;min-height:430px">
+      <!-- nav -->
+      <div style="width:164px;flex:none;padding:12px 8px;background:var(--bg,#f3f3f3);border-right:1px solid var(--stroke,rgba(0,0,0,.06))">
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:6px;background:var(--accent-soft,#e8f3ec);color:var(--accent-text,#0e6b36);font-size:13px;font-weight:600;position:relative"><span style="position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--accent,#107c41)"></span><svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none"><use href="#i-gear"/></svg>General</div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:6px;color:var(--text-2,#5c5c5c);font-size:13px;font-weight:500"><svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none"><use href="#i-link"/></svg>Paired peers</div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:6px;color:var(--text-2,#5c5c5c);font-size:13px;font-weight:500"><svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none"><use href="#i-net"/></svg>Manual hosts</div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:6px;color:var(--text-2,#5c5c5c);font-size:13px;font-weight:500"><svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none"><use href="#i-refresh"/></svg>Switching</div>
+        <div style="display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:6px;color:var(--text-2,#5c5c5c);font-size:13px;font-weight:500"><svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none"><use href="#i-info"/></svg>About</div>
+      </div>
+      <!-- content -->
+      <div style="flex:1;padding:16px 20px;overflow:auto">
+        <div style="font-size:16px;font-weight:600;margin-bottom:12px">General</div>
+        <div style="border-radius:9px;background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08));overflow:hidden">
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 15px">
+            <svg viewBox="0 0 24 24" style="width:18px;height:18px;color:var(--text-2,#5c5c5c)" fill="none"><use href="#i-power"/></svg>
+            <div style="flex:1"><div style="font-size:13px;font-weight:600">Start with Windows</div><div style="font-size:11.5px;color:var(--text-3,#8a8a8a)">Launch to the system tray on sign-in</div></div>
+            <span style="width:40px;height:21px;border-radius:11px;background:var(--accent,#107c41);position:relative;display:inline-block"><span style="position:absolute;top:3px;right:3px;width:15px;height:15px;border-radius:50%;background:#fff"></span></span>
+          </div>
+          <div style="height:1px;background:var(--stroke,rgba(0,0,0,.06));margin:0 15px"></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 15px">
+            <svg viewBox="0 0 24 24" style="width:18px;height:18px;color:var(--text-2,#5c5c5c)" fill="none"><use href="#i-sun"/></svg>
+            <div style="flex:1"><div style="font-size:13px;font-weight:600">Theme</div></div>
+            <div style="display:flex;border-radius:7px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));overflow:hidden;font-size:12px;font-weight:600">
+              <span style="padding:5px 11px;color:var(--text-2,#5c5c5c);cursor:pointer">System</span>
+              <span style="padding:5px 11px;background:var(--accent,#107c41);color:#fff;cursor:pointer">Light</span>
+              <span style="padding:5px 11px;color:var(--text-2,#5c5c5c);cursor:pointer">Dark</span>
+            </div>
+          </div>
+          <div style="height:1px;background:var(--stroke,rgba(0,0,0,.06));margin:0 15px"></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 15px">
+            <svg viewBox="0 0 24 24" style="width:18px;height:18px;color:var(--text-2,#5c5c5c)" fill="none"><use href="#i-keyboard"/></svg>
+            <div style="flex:1"><div style="font-size:13px;font-weight:600">Global hotkeys</div><div style="font-size:11.5px;color:var(--text-3,#8a8a8a)">Ctrl+Alt+1…4 apply presets from anywhere</div></div>
+            <span style="width:40px;height:21px;border-radius:11px;background:var(--accent,#107c41);position:relative;display:inline-block"><span style="position:absolute;top:3px;right:3px;width:15px;height:15px;border-radius:50%;background:#fff"></span></span>
+          </div>
+        </div>
+
+        <div style="font-size:16px;font-weight:600;margin:18px 0 12px">Paired peers</div>
+        <div style="border-radius:9px;background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08));overflow:hidden">
+          <div style="display:flex;align-items:center;gap:11px;padding:11px 15px">
+            <span style="width:30px;height:30px;border-radius:7px;background:rgba(17,124,68,.13);color:#117c44;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:17px;height:17px" fill="none"><use href="#i-pc"/></svg></span>
+            <div style="flex:1"><div style="font-size:13px;font-weight:600">Work <span style="font-size:10px;font-weight:700;color:var(--accent-text,#0e6b36);background:var(--accent-soft,#e8f3ec);padding:1px 6px;border-radius:8px;margin-left:4px">THIS PC</span></div><div style="font-size:11px;color:var(--text-3,#8a8a8a);font-family:ui-monospace,monospace">192.168.1.10 · paired key ✓</div></div>
+            <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ok-text,#0e6b36);font-weight:600"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok-text,#1aa251)"></span>online</span>
+          </div>
+          <div style="height:1px;background:var(--stroke,rgba(0,0,0,.06));margin:0 15px"></div>
+          <div style="display:flex;align-items:center;gap:11px;padding:11px 15px">
+            <span style="width:30px;height:30px;border-radius:7px;background:rgba(58,111,176,.13);color:#3a6fb0;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:17px;height:17px" fill="none"><use href="#i-pc"/></svg></span>
+            <div style="flex:1"><div style="font-size:13px;font-weight:600">Gaming</div><div style="font-size:11px;color:var(--text-3,#8a8a8a);font-family:ui-monospace,monospace">192.168.1.42 · paired key ✓</div></div>
+            <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ok-text,#0e6b36);font-weight:600;margin-right:4px"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok-text,#1aa251)"></span>online</span>
+            <button style="height:28px;padding:0 12px;border-radius:6px;border:1px solid var(--danger-stroke,#f0cbc7);background:transparent;color:var(--danger-text,#b22a1c);font-size:12px;font-weight:600;cursor:pointer">Revoke</button>
+          </div>
+          <div style="height:1px;background:var(--stroke,rgba(0,0,0,.06));margin:0 15px"></div>
+          <div style="display:flex;align-items:center;gap:11px;padding:11px 15px">
+            <span style="width:30px;height:30px;border-radius:7px;background:rgba(14,138,138,.14);color:#0e8a8a;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:17px;height:17px" fill="none"><use href="#i-server"/></svg></span>
+            <div style="flex:1"><div style="font-size:13px;font-weight:600">Home-lab</div><div style="font-size:11px;color:var(--text-3,#8a8a8a);font-family:ui-monospace,monospace">192.168.1.17 · paired key ✓</div></div>
+            <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text-3,#8a8a8a);font-weight:600;margin-right:4px"><span style="width:7px;height:7px;border-radius:50%;background:var(--text-3,#8a8a8a)"></span>offline 2m</span>
+            <button style="height:28px;padding:0 12px;border-radius:6px;border:1px solid var(--danger-stroke,#f0cbc7);background:transparent;color:var(--danger-text,#b22a1c);font-size:12px;font-weight:600;cursor:pointer">Revoke</button>
+          </div>
+        </div>
+
+        <div style="font-size:16px;font-weight:600;margin:18px 0 12px">Switching</div>
+        <div style="border-radius:9px;background:var(--layer,#fff);border:1px solid var(--stroke,rgba(0,0,0,.08));overflow:hidden">
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 15px">
+            <svg viewBox="0 0 24 24" style="width:18px;height:18px;color:var(--text-2,#5c5c5c)" fill="none"><use href="#i-check"/></svg>
+            <div style="flex:1"><div style="font-size:13px;font-weight:600">Verify input after switching</div><div style="font-size:11.5px;color:var(--text-3,#8a8a8a)">Re-read the monitor to confirm it actually changed</div></div>
+            <span style="width:40px;height:21px;border-radius:11px;background:var(--accent,#107c41);position:relative;display:inline-block"><span style="position:absolute;top:3px;right:3px;width:15px;height:15px;border-radius:50%;background:#fff"></span></span>
+          </div>
+          <div style="height:1px;background:var(--stroke,rgba(0,0,0,.06));margin:0 15px"></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 15px">
+            <svg viewBox="0 0 24 24" style="width:18px;height:18px;color:var(--text-2,#5c5c5c)" fill="none"><use href="#i-bolt"/></svg>
+            <div style="flex:1"><div style="font-size:13px;font-weight:600">DDC read timeout · retries</div><div style="font-size:11.5px;color:var(--text-3,#8a8a8a)">Raise for slow monitors that need extra time</div></div>
+            <div style="display:flex;align-items:center;height:30px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));border-radius:6px;overflow:hidden;font-size:12.5px"><span style="padding:0 10px;color:var(--text-2,#5c5c5c)">500 ms</span><span style="width:1px;align-self:stretch;background:var(--stroke,rgba(0,0,0,.1))"></span><span style="padding:0 10px;color:var(--text-2,#5c5c5c)">×3</span></div>
+          </div>
+          <div style="height:1px;background:var(--stroke,rgba(0,0,0,.06));margin:0 15px"></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 15px">
+            <svg viewBox="0 0 24 24" style="width:18px;height:18px;color:var(--text-2,#5c5c5c)" fill="none"><use href="#i-link"/></svg>
+            <div style="flex:1"><div style="font-size:13px;font-weight:600">External fallback tool</div><div style="font-size:11.5px;color:var(--text-3,#8a8a8a);font-family:ui-monospace,monospace">C:\\Tools\\ControlMyMonitor.exe</div></div>
+            <button style="height:30px;padding:0 13px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(0,0,0,.16));background:var(--subtle,#fbfbfb);color:var(--text,#1a1a1a);font-size:12.5px;font-weight:600;cursor:pointer">Browse</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ============ SECTION: TRAY FLYOUT VARIATIONS ============ -->
+<div style="position:absolute;left:60px;top:2042px;font:700 13px 'Segoe UI',system-ui;letter-spacing:1.5px;color:#8a8a8a">TRAY FLYOUT · LAYOUT VARIATIONS</div>
+<div style="position:absolute;left:430px;top:2043px;font:13px 'Segoe UI',system-ui;color:#9a9a9a">— the prototype uses the expandable list. Here are three other density takes.</div>
+
+<!-- Variant A: monitor grid -->
+<div style="position:absolute;left:60px;top:2090px;width:360px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">A · Monitor grid (visual, tap to send)</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 12px 36px rgba(0,0,0,.16);background:#f8f8fa;border:1px solid rgba(0,0,0,.09);color:#1a1a1a;font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="display:flex;align-items:center;gap:9px;padding:12px 13px 9px">
+      <span style="width:24px;height:24px;border-radius:6px;background:linear-gradient(160deg,#117c44,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:15px;height:15px;color:#fff" fill="none"><use href="#i-logo"/></svg></span>
+      <span style="font-size:14px;font-weight:600;flex:1">screen-<span style="color:#0e6b36">hop</span></span>
+      <span style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#0e6b36;background:#ecf6ef;padding:3px 8px;border-radius:11px"><span style="width:6px;height:6px;border-radius:50%;background:#1aa251"></span>3 online</span>
+    </div>
+    <div style="padding:4px 12px 10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div style="border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,.08);padding:10px 9px;text-align:center;cursor:pointer"><div style="width:30px;height:30px;border-radius:7px;margin:0 auto;background:rgba(17,124,68,.13);color:#117c44;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-monitor"/></svg></div><div style="font-size:11.5px;font-weight:600;margin-top:7px">Left</div><div style="display:inline-flex;align-items:center;gap:4px;margin-top:5px;font-size:10.5px;font-weight:600;color:#117c44;background:rgba(17,124,68,.1);padding:2px 7px;border-radius:9px"><span style="width:5px;height:5px;border-radius:50%;background:#117c44"></span>Work</div></div>
+      <div style="border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,.08);padding:10px 9px;text-align:center;cursor:pointer"><div style="width:30px;height:30px;border-radius:7px;margin:0 auto;background:rgba(58,111,176,.13);color:#3a6fb0;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-monitor"/></svg></div><div style="font-size:11.5px;font-weight:600;margin-top:7px">Center</div><div style="display:inline-flex;align-items:center;gap:4px;margin-top:5px;font-size:10.5px;font-weight:600;color:#3a6fb0;background:rgba(58,111,176,.1);padding:2px 7px;border-radius:9px"><span style="width:5px;height:5px;border-radius:50%;background:#3a6fb0"></span>Gaming</div></div>
+      <div style="border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,.08);padding:10px 9px;text-align:center;cursor:pointer"><div style="width:30px;height:30px;border-radius:7px;margin:0 auto;background:rgba(17,124,68,.13);color:#117c44;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-monitor"/></svg></div><div style="font-size:11.5px;font-weight:600;margin-top:7px">Right</div><div style="display:inline-flex;align-items:center;gap:4px;margin-top:5px;font-size:10.5px;font-weight:600;color:#117c44;background:rgba(17,124,68,.1);padding:2px 7px;border-radius:9px"><span style="width:5px;height:5px;border-radius:50%;background:#117c44"></span>Work</div></div>
+    </div>
+    <div style="height:1px;background:rgba(0,0,0,.07);margin:0 2px"></div>
+    <div style="padding:9px 12px;display:flex;gap:6px;flex-wrap:wrap">
+      <span style="font-size:12px;font-weight:600;padding:5px 11px;border-radius:8px;background:#e8f3ec;border:1px solid #bfe0cb;color:#0e6b36">Work</span>
+      <span style="font-size:12px;font-weight:600;padding:5px 11px;border-radius:8px;background:#fff;border:1px solid rgba(0,0,0,.16)">Trading</span>
+      <span style="font-size:12px;font-weight:600;padding:5px 11px;border-radius:8px;background:#fff;border:1px solid rgba(0,0,0,.16)">Couch</span>
+      <span style="font-size:12px;font-weight:600;padding:5px 11px;border-radius:8px;background:#fff;border:1px solid rgba(0,0,0,.16)">Pair</span>
+    </div>
+  </div>
+</div>
+
+<!-- Variant B: presets-first -->
+<div style="position:absolute;left:480px;top:2090px;width:360px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">B · Presets-first (for the one-click user)</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 12px 36px rgba(0,0,0,.16);background:#f8f8fa;border:1px solid rgba(0,0,0,.09);color:#1a1a1a;font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="display:flex;align-items:center;gap:9px;padding:12px 13px 10px">
+      <span style="width:24px;height:24px;border-radius:6px;background:linear-gradient(160deg,#117c44,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:15px;height:15px;color:#fff" fill="none"><use href="#i-logo"/></svg></span>
+      <span style="font-size:14px;font-weight:600;flex:1">screen-<span style="color:#0e6b36">hop</span></span>
+      <span style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#0e6b36;background:#ecf6ef;padding:3px 8px;border-radius:11px"><span style="width:6px;height:6px;border-radius:50%;background:#1aa251"></span>3 online</span>
+    </div>
+    <div style="padding:2px 12px 6px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div style="border-radius:9px;background:#e8f3ec;border:1.5px solid #bfe0cb;padding:11px 12px;cursor:pointer"><div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:14px;font-weight:600;color:#0e6b36">Work</span><span style="font-size:10px;font-weight:700;font-family:ui-monospace,monospace;color:#0e6b36;background:rgba(17,124,68,.12);padding:1px 5px;border-radius:4px">1</span></div><div style="display:flex;gap:3px;margin-top:9px"><span style="flex:1;height:6px;border-radius:2px;background:#117c44"></span><span style="flex:1;height:6px;border-radius:2px;background:#117c44"></span><span style="flex:1;height:6px;border-radius:2px;background:#117c44"></span></div></div>
+      <div style="border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,.1);padding:11px 12px;cursor:pointer"><div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:14px;font-weight:600">Trading</span><span style="font-size:10px;font-weight:700;font-family:ui-monospace,monospace;color:#5c5c5c;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px">2</span></div><div style="display:flex;gap:3px;margin-top:9px"><span style="flex:1;height:6px;border-radius:2px;background:#117c44"></span><span style="flex:1;height:6px;border-radius:2px;background:#3a6fb0"></span><span style="flex:1;height:6px;border-radius:2px;background:#117c44"></span></div></div>
+      <div style="border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,.1);padding:11px 12px;cursor:pointer"><div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:14px;font-weight:600">Couch</span><span style="font-size:10px;font-weight:700;font-family:ui-monospace,monospace;color:#5c5c5c;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px">3</span></div><div style="display:flex;gap:3px;margin-top:9px"><span style="flex:1;height:6px;border-radius:2px;background:#3a6fb0"></span><span style="flex:1;height:6px;border-radius:2px;background:#3a6fb0"></span><span style="flex:1;height:6px;border-radius:2px;background:#3a6fb0"></span></div></div>
+      <div style="border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,.1);padding:11px 12px;cursor:pointer"><div style="display:flex;align-items:center;justify-content:space-between"><span style="font-size:14px;font-weight:600">Pair</span><span style="font-size:10px;font-weight:700;font-family:ui-monospace,monospace;color:#5c5c5c;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px">4</span></div><div style="display:flex;gap:3px;margin-top:9px"><span style="flex:1;height:6px;border-radius:2px;background:#117c44"></span><span style="flex:1;height:6px;border-radius:2px;background:#0e8a8a"></span><span style="flex:1;height:6px;border-radius:2px;background:#3a6fb0"></span></div></div>
+    </div>
+    <div style="height:1px;background:rgba(0,0,0,.07);margin:6px 2px 0"></div>
+    <button style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:11px 14px;background:transparent;border:none;cursor:pointer;font-family:inherit"><span style="font-size:12.5px;color:#5c5c5c">3 monitors · 2 on Work, 1 on Gaming</span><span style="display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;color:#0e6b36">Manage<svg viewBox="0 0 24 24" style="width:14px;height:14px" fill="none"><use href="#i-chev-r"/></svg></span></button>
+  </div>
+</div>
+
+<!-- Variant C: segmented inline -->
+<div style="position:absolute;left:900px;top:2090px;width:392px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">C · Inline segmented (one click, no expand)</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 12px 36px rgba(0,0,0,.16);background:#f8f8fa;border:1px solid rgba(0,0,0,.09);color:#1a1a1a;font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="display:flex;align-items:center;gap:9px;padding:12px 13px 10px">
+      <span style="width:24px;height:24px;border-radius:6px;background:linear-gradient(160deg,#117c44,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:15px;height:15px;color:#fff" fill="none"><use href="#i-logo"/></svg></span>
+      <span style="font-size:14px;font-weight:600;flex:1">screen-<span style="color:#0e6b36">hop</span></span>
+      <span style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#0e6b36;background:#ecf6ef;padding:3px 8px;border-radius:11px"><span style="width:6px;height:6px;border-radius:50%;background:#1aa251"></span>3 online</span>
+    </div>
+    <div style="padding:2px 12px 8px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,.08)">
+        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Left 27"</div><div style="font-size:10.5px;color:#8a8a8a">DP-1 · 1440p</div></div>
+        <div style="display:flex;border-radius:7px;border:1px solid rgba(0,0,0,.14);overflow:hidden;font-size:11px;font-weight:600"><span style="padding:5px 9px;background:#117c44;color:#fff">Work</span><span style="padding:5px 9px;color:#5c5c5c;border-left:1px solid rgba(0,0,0,.1)">Gam</span><span style="padding:5px 9px;color:#5c5c5c;border-left:1px solid rgba(0,0,0,.1)">Lab</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,.08)">
+        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Center 32"</div><div style="font-size:10.5px;color:#8a8a8a">HDMI-2 · 4K</div></div>
+        <div style="display:flex;border-radius:7px;border:1px solid rgba(0,0,0,.14);overflow:hidden;font-size:11px;font-weight:600"><span style="padding:5px 9px;color:#5c5c5c">Work</span><span style="padding:5px 9px;background:#3a6fb0;color:#fff;border-left:1px solid rgba(0,0,0,.1)">Gam</span><span style="padding:5px 9px;color:#5c5c5c;border-left:1px solid rgba(0,0,0,.1)">Lab</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:#fff;border:1px solid rgba(0,0,0,.08)">
+        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600">Right 27"</div><div style="font-size:10.5px;color:#8a8a8a">DP-2 · 1440p</div></div>
+        <div style="display:flex;border-radius:7px;border:1px solid rgba(0,0,0,.14);overflow:hidden;font-size:11px;font-weight:600"><span style="padding:5px 9px;background:#117c44;color:#fff">Work</span><span style="padding:5px 9px;color:#5c5c5c;border-left:1px solid rgba(0,0,0,.1)">Gam</span><span style="padding:5px 9px;color:#5c5c5c;border-left:1px solid rgba(0,0,0,.1)">Lab</span></div>
+      </div>
+    </div>
+    <div style="height:1px;background:rgba(0,0,0,.07);margin:0 2px"></div>
+    <div style="padding:9px 12px;display:flex;align-items:center;gap:6px"><span style="font-size:10px;font-weight:700;letter-spacing:.5px;color:#8a8a8a;margin-right:2px">PRESETS</span><span style="font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:7px;background:#e8f3ec;border:1px solid #bfe0cb;color:#0e6b36">Trading</span><span style="font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:7px;background:#fff;border:1px solid rgba(0,0,0,.16)">Work</span><span style="font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:7px;background:#fff;border:1px solid rgba(0,0,0,.16)">Couch</span></div>
+  </div>
+</div>
+
+<!-- ============ SECTION: DESK-MAP HERO VARIATIONS ============ -->
+<div style="position:absolute;left:1380px;top:2042px;font:700 13px 'Segoe UI',system-ui;letter-spacing:1.5px;color:#8a8a8a">DESK-MAP HERO · VARIATIONS</div>
+<div style="position:absolute;left:1730px;top:2043px;font:13px 'Segoe UI',system-ui;color:#9a9a9a">— prototype uses routing/patchbay. Two alternatives:</div>
+
+<!-- Hero variant: physical desk -->
+<div style="position:absolute;left:1380px;top:2090px;width:520px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">i · Physical desk layout (monitors where they sit)</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 12px 36px rgba(0,0,0,.14);background:#fff;border:1px solid rgba(0,0,0,.08);color:#1a1a1a;font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="padding:14px 16px 4px"><div style="font-size:15px;font-weight:600">Your desk</div><div style="font-size:11.5px;color:#8a8a8a">Tiles mirror where the monitors sit. Click to cycle owner.</div></div>
+    <div style="padding:14px 16px 18px;display:flex;align-items:flex-end;justify-content:center;gap:14px;background:linear-gradient(180deg,#f6f7f9,#eef0f3)">
+      <div style="width:130px;height:84px;border-radius:8px;background:#fff;border:2px solid #117c44;box-shadow:0 2px 8px rgba(0,0,0,.1);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer;margin-bottom:14px"><span style="font-size:12px;font-weight:600">Left 27"</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;color:#117c44;background:rgba(17,124,68,.1);padding:2px 8px;border-radius:9px"><span style="width:5px;height:5px;border-radius:50%;background:#117c44"></span>Work</span></div>
+      <div style="width:172px;height:104px;border-radius:8px;background:#fff;border:2px solid #3a6fb0;box-shadow:0 3px 12px rgba(0,0,0,.13);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;cursor:pointer"><span style="font-size:13px;font-weight:600">Center 32"</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#3a6fb0;background:rgba(58,111,176,.1);padding:2px 9px;border-radius:9px"><span style="width:6px;height:6px;border-radius:50%;background:#3a6fb0"></span>Gaming</span></div>
+      <div style="width:130px;height:84px;border-radius:8px;background:#fff;border:2px solid #117c44;box-shadow:0 2px 8px rgba(0,0,0,.1);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;cursor:pointer;margin-bottom:14px"><span style="font-size:12px;font-weight:600">Right 27"</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;color:#117c44;background:rgba(17,124,68,.1);padding:2px 8px;border-radius:9px"><span style="width:5px;height:5px;border-radius:50%;background:#117c44"></span>Work</span></div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;border-top:1px solid rgba(0,0,0,.06);background:#fff"><span style="width:54px;height:6px;border-radius:3px;background:#cdd2d8"></span><span style="font-size:10px;color:#8a8a8a">desk edge</span><span style="width:54px;height:6px;border-radius:3px;background:#cdd2d8"></span></div>
+  </div>
+</div>
+
+<!-- Hero variant: tile grid -->
+<div style="position:absolute;left:1380px;top:2412px;width:520px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">ii · Uniform tile grid (owner as fill)</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 12px 36px rgba(0,0,0,.14);background:#fff;border:1px solid rgba(0,0,0,.08);color:#1a1a1a;font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="padding:14px 16px 10px"><div style="font-size:15px;font-weight:600">Monitors</div><div style="font-size:11.5px;color:#8a8a8a">Owner shown as a color fill; click a tile to reassign.</div></div>
+    <div style="padding:0 16px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:11px">
+      <div style="border-radius:10px;overflow:hidden;border:1px solid rgba(0,0,0,.08);cursor:pointer"><div style="height:48px;background:linear-gradient(135deg,#117c44,#0d6c3a)"></div><div style="padding:9px 10px"><div style="font-size:12.5px;font-weight:600">Left 27"</div><div style="font-size:10.5px;color:#117c44;font-weight:600;margin-top:2px">Work</div></div></div>
+      <div style="border-radius:10px;overflow:hidden;border:1px solid rgba(0,0,0,.08);cursor:pointer"><div style="height:48px;background:linear-gradient(135deg,#3a6fb0,#335f97)"></div><div style="padding:9px 10px"><div style="font-size:12.5px;font-weight:600">Center 32"</div><div style="font-size:10.5px;color:#3a6fb0;font-weight:600;margin-top:2px">Gaming</div></div></div>
+      <div style="border-radius:10px;overflow:hidden;border:1px solid rgba(0,0,0,.08);cursor:pointer"><div style="height:48px;background:linear-gradient(135deg,#117c44,#0d6c3a)"></div><div style="padding:9px 10px"><div style="font-size:12.5px;font-weight:600">Right 27"</div><div style="font-size:10.5px;color:#117c44;font-weight:600;margin-top:2px">Work</div></div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-top:1px solid rgba(0,0,0,.06)"><span style="font-size:10.5px;font-weight:700;letter-spacing:.4px;color:#8a8a8a">PEERS</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px"><span style="width:8px;height:8px;border-radius:50%;background:#117c44"></span>Work</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px"><span style="width:8px;height:8px;border-radius:50%;background:#3a6fb0"></span>Gaming</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px"><span style="width:8px;height:8px;border-radius:50%;background:#0e8a8a"></span>Home-lab</span></div>
+  </div>
+</div>
+<!-- ============ SECTION: DARK THEME ============ -->
+<div style="position:absolute;left:60px;top:2932px;font:700 13px 'Segoe UI',system-ui;letter-spacing:1.5px;color:#8a8a8a">DARK THEME · KEY SURFACES</div>
+<div style="position:absolute;left:330px;top:2933px;font:13px 'Segoe UI',system-ui;color:#9a9a9a">— full dark is interactive in the prototype; here are static references.</div>
+
+<!-- Dark flyout -->
+<div style="position:absolute;left:60px;top:2980px;width:392px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">Tray flyout · dark</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 14px 40px rgba(0,0,0,.5);background:#2b2b2b;border:1px solid rgba(255,255,255,.08);color:#fff;font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;{{ D }}">
+    <div style="display:flex;align-items:center;gap:10px;padding:13px 12px 11px 14px">
+      <span style="width:27px;height:27px;border-radius:7px;background:linear-gradient(160deg,#2c9e54,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:17px;height:17px;color:#fff" fill="none"><use href="#i-logo"/></svg></span>
+      <span style="font-size:14.5px;font-weight:600;flex:1">screen-<span style="color:#6fd49a">hop</span></span>
+      <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:#74d08f;background:rgba(74,188,124,.16);padding:4px 9px;border-radius:13px"><span style="width:7px;height:7px;border-radius:50%;background:#4abc7c"></span>All online</span>
+      <span style="width:30px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.6)"><svg viewBox="0 0 24 24" style="width:16px;height:16px" fill="none"><use href="#i-sun"/></svg></span>
+    </div>
+    <div style="height:1px;background:rgba(255,255,255,.08);margin:0 2px"></div>
+    <div style="padding:9px 6px 4px">
+      <div style="font-size:10.5px;font-weight:700;letter-spacing:.6px;color:rgba(255,255,255,.46);padding:2px 8px 7px">MONITORS</div>
+      <div style="display:flex;align-items:center;gap:11px;padding:8px 9px;border-radius:7px">
+        <span style="width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);color:#4abc7c;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-monitor"/></svg></span>
+        <div style="flex:1"><div style="font-size:13.5px;font-weight:600">Left 27"</div><div style="font-size:11px;color:rgba(255,255,255,.46)">Dell U2723QE · DP-1 · 1440p</div></div>
+        <div style="display:flex;align-items:center;gap:6px;padding:3px 8px 3px 7px;border-radius:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09)"><span style="width:7px;height:7px;border-radius:50%;background:#4abc7c"></span><span style="font-size:12px;font-weight:600">Work</span></div>
+        <svg viewBox="0 0 24 24" style="width:15px;height:15px;color:rgba(255,255,255,.46)" fill="none"><use href="#i-chev-d"/></svg>
+      </div>
+      <div style="display:flex;align-items:center;gap:11px;padding:8px 9px;border-radius:7px">
+        <span style="width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);color:#5a93d6;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-monitor"/></svg></span>
+        <div style="flex:1"><div style="font-size:13.5px;font-weight:600">Center 32"</div><div style="font-size:11px;color:rgba(255,255,255,.46)">LG 32UN880 · HDMI-2 · 4K</div></div>
+        <div style="display:flex;align-items:center;gap:6px;padding:3px 8px 3px 7px;border-radius:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09)"><span style="width:7px;height:7px;border-radius:50%;background:#5a93d6"></span><span style="font-size:12px;font-weight:600">Gaming</span></div>
+        <svg viewBox="0 0 24 24" style="width:15px;height:15px;color:rgba(255,255,255,.46)" fill="none"><use href="#i-chev-d"/></svg>
+      </div>
+      <div style="display:flex;align-items:center;gap:11px;padding:8px 9px;border-radius:7px">
+        <span style="width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);color:#4abc7c;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-monitor"/></svg></span>
+        <div style="flex:1"><div style="font-size:13.5px;font-weight:600">Right 27"</div><div style="font-size:11px;color:rgba(255,255,255,.46)">Dell U2723QE · DP-2 · 1440p</div></div>
+        <div style="display:flex;align-items:center;gap:6px;padding:3px 8px 3px 7px;border-radius:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09)"><span style="width:7px;height:7px;border-radius:50%;background:#4abc7c"></span><span style="font-size:12px;font-weight:600">Work</span></div>
+        <svg viewBox="0 0 24 24" style="width:15px;height:15px;color:rgba(255,255,255,.46)" fill="none"><use href="#i-chev-d"/></svg>
+      </div>
+    </div>
+    <div style="height:1px;background:rgba(255,255,255,.08);margin:4px 2px"></div>
+    <div style="padding:9px 14px 12px"><div style="font-size:10.5px;font-weight:700;letter-spacing:.6px;color:rgba(255,255,255,.46);margin-bottom:9px">PRESETS</div><div style="display:flex;gap:7px;flex-wrap:wrap"><span style="font-size:12.5px;font-weight:600;padding:6px 10px;border-radius:8px;background:rgba(74,188,124,.16);border:1px solid rgba(74,188,124,.36);color:#6fd49a">Trading</span><span style="font-size:12.5px;font-weight:600;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.16)">Work</span><span style="font-size:12.5px;font-weight:600;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.16)">Couch</span><span style="font-size:12.5px;font-weight:600;padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.16)">Pair</span></div></div>
+  </div>
+</div>
+
+<!-- Dark blind dialog -->
+<div style="position:absolute;left:500px;top:2980px;width:430px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">You'll be blind · dark</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.55);background:var(--layer,#2b2b2b);border:1px solid rgba(255,255,255,.08);color:#fff;font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;{{ D }}">
+    <div style="padding:20px 22px 6px;display:flex;gap:14px">
+      <div style="width:38px;height:38px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:var(--danger-bg,#371d1b);color:var(--danger-text,#ff99a0)"><svg viewBox="0 0 24 24" style="width:21px;height:21px" fill="none"><use href="#i-alert"/></svg></div>
+      <div style="flex:1">
+        <div style="font-size:16px;font-weight:600">This PC will go blind</div>
+        <div style="font-size:12.5px;line-height:1.5;color:var(--text-2,rgba(255,255,255,.73));margin-top:6px">Sending <b style="color:#fff">Right 27"</b> to Gaming leaves <b style="color:#fff">Work</b> (this PC) with no display. You won't see this screen after the switch.</div>
+        <div style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding:9px 11px;border-radius:7px;background:var(--warn-bg,#312a18);border:1px solid var(--warn-stroke,#544326)"><svg viewBox="0 0 24 24" style="width:15px;height:15px;flex:none;margin-top:1px;color:var(--warn-accent,#e7a93c)" fill="none"><use href="#i-info"/></svg><span style="font-size:12px;line-height:1.45;color:var(--warn-text,#f2c879)">Keep at least one monitor on Work, or have another PC ready to switch it back.</span></div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:9px;padding:18px 22px 20px">
+      <button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(255,255,255,.16));background:var(--subtle,rgba(255,255,255,.05));color:#fff;font-size:13px;font-weight:600;cursor:pointer">Cancel</button>
+      <button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid transparent;background:var(--danger,#e04a3c);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Switch and go blind</button>
+    </div>
+  </div>
+</div>
+
+<!-- Dark stranded dialog -->
+<div style="position:absolute;left:980px;top:2980px;width:430px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">Stranded · dark</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.55);background:var(--layer,#2b2b2b);border:1px solid rgba(255,255,255,.08);color:#fff;font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;{{ D }}">
+    <div style="padding:20px 22px 6px;display:flex;gap:14px">
+      <div style="width:38px;height:38px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;background:var(--warn-bg,#312a18);color:var(--warn-accent,#e7a93c)"><svg viewBox="0 0 24 24" style="width:21px;height:21px" fill="none"><use href="#i-alert"/></svg></div>
+      <div style="flex:1">
+        <div style="font-size:16px;font-weight:600">Center 32" is stranded</div>
+        <div style="font-size:12.5px;line-height:1.5;color:var(--text-2,rgba(255,255,255,.73));margin-top:6px">It's driven by <b style="color:#fff">Home-lab</b>, which is offline or asleep. Software can't pull a monitor away from an unreachable PC.</div>
+        <div style="display:flex;gap:9px;align-items:flex-start;margin-top:12px;padding:11px;border-radius:7px;background:var(--bg-2,#272727)"><svg viewBox="0 0 24 24" style="width:16px;height:16px;flex:none;margin-top:1px;color:var(--text-2,rgba(255,255,255,.73))" fill="none"><use href="#i-power"/></svg><span style="font-size:12px;line-height:1.5;color:var(--text-2,rgba(255,255,255,.73))">Press the monitor's <b style="color:#fff">Input / Source</b> button on the bezel and choose this PC's connector (<b style="color:#fff">HDMI-2</b>).</span></div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:9px;padding:18px 22px 20px">
+      <button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid var(--ctl-stroke,rgba(255,255,255,.16));background:var(--subtle,rgba(255,255,255,.05));color:#fff;font-size:13px;font-weight:600;cursor:pointer">Retry detection</button>
+      <button style="height:32px;padding:0 16px;border-radius:6px;border:1px solid transparent;background:var(--accent,#4abc7c);color:#07210f;font-size:13px;font-weight:600;cursor:pointer">Got it</button>
+    </div>
+  </div>
+</div>
+
+<!-- Dark desk map mini -->
+<div style="position:absolute;left:1460px;top:2980px;width:500px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">Desk map (physical) · dark</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 14px 40px rgba(0,0,0,.5);background:var(--bg,#1f1f1f);border:1px solid rgba(255,255,255,.08);color:#fff;font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;{{ D }}">
+    <div style="display:flex;align-items:center;height:34px;padding:0 10px;background:var(--bg-2,#272727);border-bottom:1px solid rgba(255,255,255,.06)"><span style="width:15px;height:15px;border-radius:4px;background:linear-gradient(160deg,#2c9e54,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:10px;height:10px;color:#fff" fill="none"><use href="#i-logo"/></svg></span><span style="font-size:11px;font-weight:600;color:rgba(255,255,255,.6);margin-left:8px">screen-hop — Desk map</span></div>
+    <div style="padding:13px 16px 5px"><div style="font-size:14px;font-weight:600">Your desk</div></div>
+    <div style="padding:10px 16px 16px;display:flex;align-items:flex-end;justify-content:center;gap:13px;background:linear-gradient(180deg,#242424,#1c1c1c)">
+      <div style="width:118px;height:76px;border-radius:8px;background:#2b2b2b;border:2px solid #4abc7c;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;margin-bottom:13px"><span style="font-size:11.5px;font-weight:600">Left 27"</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;color:#74d08f;background:rgba(74,188,124,.16);padding:2px 7px;border-radius:9px"><span style="width:5px;height:5px;border-radius:50%;background:#4abc7c"></span>Work</span></div>
+      <div style="width:156px;height:94px;border-radius:8px;background:#2b2b2b;border:2px solid #5a93d6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px"><span style="font-size:12.5px;font-weight:600">Center 32"</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;color:#9bc1ea;background:rgba(90,147,214,.18);padding:2px 8px;border-radius:9px"><span style="width:6px;height:6px;border-radius:50%;background:#5a93d6"></span>Gaming</span></div>
+      <div style="width:118px;height:76px;border-radius:8px;background:#2b2b2b;border:2px solid #4abc7c;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;margin-bottom:13px"><span style="font-size:11.5px;font-weight:600">Right 27"</span><span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;color:#74d08f;background:rgba(74,188,124,.16);padding:2px 7px;border-radius:9px"><span style="width:5px;height:5px;border-radius:50%;background:#4abc7c"></span>Work</span></div>
+    </div>
+  </div>
+</div>
+<!-- Hero variant: ROUTING / PATCHBAY (the one the user liked) -->
+<div style="position:absolute;left:1980px;top:2042px;width:720px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#0e6b36">★ iii · Routing / patchbay — the layout you liked</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.16);background:#f3f3f3;border:1px solid rgba(0,0,0,.08);color:#1a1a1a;font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="display:flex;align-items:center;height:36px;padding:0 10px;background:#eaeaea;border-bottom:1px solid rgba(0,0,0,.06)">
+      <span style="width:16px;height:16px;border-radius:4px;background:linear-gradient(160deg,#117c44,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:11px;height:11px;color:#fff" fill="none"><use href="#i-logo"/></svg></span>
+      <span style="font-size:11.5px;font-weight:600;color:#5c5c5c;margin-left:8px">screen-hop — Desk map</span>
+    </div>
+    <div style="padding:15px 20px 18px">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:6px">
+        <div><div style="font-size:18px;font-weight:600;letter-spacing:-.3px">Desk map</div><div style="font-size:12px;color:#8a8a8a;margin-top:1px">Lines show who drives what. Click a monitor to re-route it.</div></div>
+        <span style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#0e6b36;background:#ecf6ef;border:1px solid #bfe0cb;padding:5px 11px;border-radius:14px"><span style="width:7px;height:7px;border-radius:50%;background:#1aa251"></span>All online</span>
+      </div>
+      <div style="position:relative;height:20px"><span style="position:absolute;left:0;font-size:10px;font-weight:700;letter-spacing:.5px;color:#8a8a8a">PEERS</span><span style="position:absolute;left:430px;font-size:10px;font-weight:700;letter-spacing:.5px;color:#8a8a8a">MONITORS</span></div>
+
+      <div style="position:relative;width:660px;height:312px">
+        <svg viewBox="0 0 660 312" style="position:absolute;left:0;top:0;width:660px;height:312px;z-index:1;pointer-events:none;overflow:visible">
+          <path d="M188,48 C 296,48 322,48 430,48" fill="none" stroke="#117c44" stroke-width="9" stroke-linecap="round" style="opacity:.15"></path>
+          <path d="M188,150 C 296,150 322,150 430,150" fill="none" stroke="#3a6fb0" stroke-width="9" stroke-linecap="round" style="opacity:.15"></path>
+          <path d="M188,48 C 300,48 318,252 430,252" fill="none" stroke="#117c44" stroke-width="9" stroke-linecap="round" style="opacity:.15"></path>
+          <path d="M188,48 C 296,48 322,48 430,48" fill="none" stroke="#117c44" stroke-width="3.2" stroke-linecap="round"></path>
+          <path d="M188,150 C 296,150 322,150 430,150" fill="none" stroke="#3a6fb0" stroke-width="3.2" stroke-linecap="round"></path>
+          <path d="M188,48 C 300,48 318,252 430,252" fill="none" stroke="#117c44" stroke-width="3.2" stroke-linecap="round"></path>
+          <circle cx="188" cy="48" r="4.5" fill="#117c44"></circle>
+          <circle cx="188" cy="150" r="4.5" fill="#3a6fb0"></circle>
+          <circle cx="430" cy="48" r="4.5" fill="#117c44"></circle>
+          <circle cx="430" cy="150" r="4.5" fill="#3a6fb0"></circle>
+          <circle cx="430" cy="252" r="4.5" fill="#117c44"></circle>
+        </svg>
+
+        <!-- PC nodes -->
+        <div style="position:absolute;left:0;top:6px;width:188px;height:84px;border-radius:10px;background:#fff;border:1px solid rgba(0,0,0,.08);box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;align-items:center;gap:11px;padding:0 12px 0 15px;overflow:hidden">
+          <span style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#117c44"></span>
+          <span style="width:36px;height:36px;border-radius:9px;flex:none;background:rgba(17,124,68,.13);color:#117c44;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none"><use href="#i-pc"/></svg></span>
+          <div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:6px"><span style="font-size:14px;font-weight:600">Work</span><span style="font-size:9px;font-weight:700;letter-spacing:.3px;color:#0e6b36;background:#e8f3ec;border:1px solid #bfe0cb;padding:1px 5px;border-radius:8px">THIS PC</span></div><div style="font-size:11px;color:#8a8a8a;margin-top:2px">2 monitors</div></div>
+          <span style="width:9px;height:9px;border-radius:50%;flex:none;background:#1aa251;box-shadow:0 0 0 3px #ecf6ef"></span>
+        </div>
+        <div style="position:absolute;left:0;top:114px;width:188px;height:84px;border-radius:10px;background:#fff;border:1px solid rgba(0,0,0,.08);box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;align-items:center;gap:11px;padding:0 12px 0 15px;overflow:hidden">
+          <span style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#3a6fb0"></span>
+          <span style="width:36px;height:36px;border-radius:9px;flex:none;background:rgba(58,111,176,.13);color:#3a6fb0;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none"><use href="#i-pc"/></svg></span>
+          <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">Gaming</div><div style="font-size:11px;color:#8a8a8a;margin-top:2px">1 monitor</div></div>
+          <span style="width:9px;height:9px;border-radius:50%;flex:none;background:#1aa251;box-shadow:0 0 0 3px #ecf6ef"></span>
+        </div>
+        <div style="position:absolute;left:0;top:222px;width:188px;height:84px;border-radius:10px;background:#fff;border:1px solid rgba(0,0,0,.08);box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;align-items:center;gap:11px;padding:0 12px 0 15px;overflow:hidden">
+          <span style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#0e8a8a"></span>
+          <span style="width:36px;height:36px;border-radius:9px;flex:none;background:rgba(14,138,138,.14);color:#0e8a8a;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:20px;height:20px" fill="none"><use href="#i-server"/></svg></span>
+          <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600">Home-lab</div><div style="font-size:11px;color:#8a8a8a;margin-top:2px">0 monitors · idle</div></div>
+          <span style="width:9px;height:9px;border-radius:50%;flex:none;background:#1aa251;box-shadow:0 0 0 3px #ecf6ef"></span>
+        </div>
+
+        <!-- monitor tiles -->
+        <div style="position:absolute;left:430px;top:6px;width:230px;height:84px;border-radius:10px;background:#fff;border:1px solid rgba(0,0,0,.08);box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 14px;cursor:pointer">
+          <div style="display:flex;align-items:center;gap:9px"><span style="width:30px;height:30px;border-radius:7px;flex:none;background:rgba(17,124,68,.13);color:#117c44;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-monitor"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600">Left 27"</div><div style="font-size:10.5px;color:#8a8a8a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Dell U2723QE · DP-1 · 1440p</div></div><span style="display:flex;align-items:center;gap:6px;padding:3px 8px 3px 7px;border-radius:13px;background:#fbfbfb;border:1px solid rgba(0,0,0,.08)"><span style="width:7px;height:7px;border-radius:50%;background:#117c44"></span><span style="font-size:11.5px;font-weight:600">Work</span></span></div>
+        </div>
+        <div style="position:absolute;left:430px;top:114px;width:230px;height:84px;border-radius:10px;background:#fff;border:1px solid rgba(0,0,0,.08);box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 14px;cursor:pointer">
+          <div style="display:flex;align-items:center;gap:9px"><span style="width:30px;height:30px;border-radius:7px;flex:none;background:rgba(58,111,176,.13);color:#3a6fb0;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-monitor"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600">Center 32"</div><div style="font-size:10.5px;color:#8a8a8a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">LG 32UN880 · HDMI-2 · 4K</div></div><span style="display:flex;align-items:center;gap:6px;padding:3px 8px 3px 7px;border-radius:13px;background:#fbfbfb;border:1px solid rgba(0,0,0,.08)"><span style="width:7px;height:7px;border-radius:50%;background:#3a6fb0"></span><span style="font-size:11.5px;font-weight:600">Gaming</span></span></div>
+        </div>
+        <div style="position:absolute;left:430px;top:222px;width:230px;height:84px;border-radius:10px;background:#fff;border:1px solid rgba(0,0,0,.08);box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;flex-direction:column;justify-content:center;gap:5px;padding:0 14px;cursor:pointer">
+          <div style="display:flex;align-items:center;gap:9px"><span style="width:30px;height:30px;border-radius:7px;flex:none;background:rgba(17,124,68,.13);color:#117c44;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:18px;height:18px" fill="none"><use href="#i-monitor"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600">Right 27"</div><div style="font-size:10.5px;color:#8a8a8a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Dell U2723QE · DP-2 · 1440p</div></div><span style="display:flex;align-items:center;gap:6px;padding:3px 8px 3px 7px;border-radius:13px;background:#fbfbfb;border:1px solid rgba(0,0,0,.08)"><span style="width:7px;height:7px;border-radius:50%;background:#117c44"></span><span style="font-size:11.5px;font-weight:600">Work</span></span></div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:11px;color:#8a8a8a"><svg viewBox="0 0 24 24" style="width:13px;height:13px" fill="none"><use href="#i-info"/></svg>Hover a PC to highlight its cables · drag a cable end to another monitor to re-route. Live &amp; interactive in <b>screen-hop.dc.html</b>.</div>
+    </div>
+  </div>
+</div>
+<!-- ============ SECTION: CROSS-PLATFORM ============ -->
+<div style="position:absolute;left:60px;top:3380px;font:700 13px 'Segoe UI',system-ui;letter-spacing:1.5px;color:#8a8a8a">CROSS-PLATFORM · ONE SHELL, ADAPTED PER OS</div>
+<div style="position:absolute;left:520px;top:3381px;font:13px 'Segoe UI',system-ui;color:#9a9a9a">— same content; only the tray anchor, window chrome, accent &amp; theme follow the OS.</div>
+
+<!-- macOS menu-bar flyout -->
+<div style="position:absolute;left:60px;top:3428px;width:540px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">macOS · menu-bar flyout</div>
+  <div style="border-radius:11px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.18);font-family:-apple-system,'SF Pro Text','Helvetica Neue',system-ui,sans-serif;background:linear-gradient(165deg,#dfe7f1,#c8d5e6)">
+    <!-- menu bar -->
+    <div style="height:26px;display:flex;align-items:center;gap:14px;padding:0 12px;background:rgba(250,250,252,.72);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:1px solid rgba(0,0,0,.06);font-size:12.5px;color:#1d1d1f">
+      <svg viewBox="0 0 24 24" style="width:13px;height:13px;color:#2a2a2c" fill="currentColor"><path d="M15.8 13.2c0-2 1.6-2.8 1.7-2.9-.9-1.3-2.3-1.5-2.8-1.5-1.2-.1-2.3.7-2.9.7-.6 0-1.5-.7-2.5-.7-1.3 0-2.5.7-3.1 1.9-1.3 2.3-.3 5.7 1 7.5.6.9 1.3 1.9 2.2 1.8.9 0 1.2-.6 2.3-.6 1.1 0 1.4.6 2.3.6.9 0 1.5-.9 2.1-1.8.4-.6.6-.9.8-1.5-2.2-.9-2.1-3-1.4-3.3z"/><path d="M13.9 7.4c.5-.6.8-1.5.7-2.4-.8.1-1.6.5-2.1 1.1-.5.6-.8 1.4-.7 2.3.8.1 1.6-.4 2.1-1z"/></svg>
+      <span style="font-weight:700">screen-hop</span><span style="color:#3a3a3c">File</span><span style="color:#3a3a3c">Edit</span><span style="color:#3a3a3c">Window</span>
+      <div style="flex:1"></div>
+      <svg viewBox="0 0 24 24" style="width:15px;height:15px;color:#1d1d1f" fill="none"><use href="#i-net"/></svg>
+      <svg viewBox="0 0 24 24" style="width:15px;height:15px;color:#1d1d1f" fill="none"><use href="#i-volume"/></svg>
+      <span style="width:20px;height:20px;border-radius:5px;background:linear-gradient(160deg,#117c44,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:13px;height:13px;color:#fff" fill="none"><use href="#i-logo"/></svg></span>
+      <span style="font-size:12px">Fri 9:41</span>
+    </div>
+    <!-- desktop + flyout -->
+    <div style="position:relative;height:312px;padding:9px 12px">
+      <div style="position:absolute;right:42px;top:1px;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:8px solid rgba(248,248,250,.96)"></div>
+      <div style="position:absolute;right:10px;top:8px;width:296px;border-radius:12px;overflow:hidden;background:rgba(248,248,250,.86);backdrop-filter:blur(30px) saturate(1.6);-webkit-backdrop-filter:blur(30px) saturate(1.6);box-shadow:0 12px 34px rgba(0,0,0,.22),0 0 0 .5px rgba(0,0,0,.08);color:#1d1d1f">
+        <div style="display:flex;align-items:center;gap:8px;padding:11px 12px 8px">
+          <span style="width:22px;height:22px;border-radius:6px;background:linear-gradient(160deg,#117c44,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:14px;height:14px;color:#fff" fill="none"><use href="#i-logo"/></svg></span>
+          <span style="font-size:13.5px;font-weight:600;flex:1">screen-hop</span>
+          <span style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#0e6b36"><span style="width:6px;height:6px;border-radius:50%;background:#1aa251"></span>3 online</span>
+        </div>
+        <div style="height:.5px;background:rgba(0,0,0,.1);margin:0 0"></div>
+        <div style="padding:6px 8px;display:flex;flex-direction:column;gap:1px">
+          <div style="display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:7px">
+            <svg viewBox="0 0 24 24" style="width:16px;height:16px;color:#117c44" fill="none"><use href="#i-monitor"/></svg>
+            <span style="flex:1;font-size:12.5px;font-weight:500">Left 27"</span>
+            <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:#3a3a3c"><span style="width:6px;height:6px;border-radius:50%;background:#117c44"></span>Work</span>
+            <svg viewBox="0 0 24 24" style="width:13px;height:13px;color:#86868b" fill="none"><use href="#i-chev-r"/></svg>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:7px">
+            <svg viewBox="0 0 24 24" style="width:16px;height:16px;color:#3a6fb0" fill="none"><use href="#i-monitor"/></svg>
+            <span style="flex:1;font-size:12.5px;font-weight:500">Center 32"</span>
+            <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:#3a3a3c"><span style="width:6px;height:6px;border-radius:50%;background:#3a6fb0"></span>Gaming</span>
+            <svg viewBox="0 0 24 24" style="width:13px;height:13px;color:#86868b" fill="none"><use href="#i-chev-r"/></svg>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:7px">
+            <svg viewBox="0 0 24 24" style="width:16px;height:16px;color:#117c44" fill="none"><use href="#i-monitor"/></svg>
+            <span style="flex:1;font-size:12.5px;font-weight:500">Right 27"</span>
+            <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;color:#3a3a3c"><span style="width:6px;height:6px;border-radius:50%;background:#117c44"></span>Work</span>
+            <svg viewBox="0 0 24 24" style="width:13px;height:13px;color:#86868b" fill="none"><use href="#i-chev-r"/></svg>
+          </div>
+        </div>
+        <div style="height:.5px;background:rgba(0,0,0,.1)"></div>
+        <div style="padding:8px 10px"><div style="font-size:10px;font-weight:700;letter-spacing:.4px;color:#86868b;margin-bottom:7px">PRESETS</div><div style="display:flex;gap:6px;flex-wrap:wrap"><span style="font-size:11.5px;font-weight:500;padding:4px 10px;border-radius:7px;background:#117c44;color:#fff">Trading</span><span style="font-size:11.5px;font-weight:500;padding:4px 10px;border-radius:7px;background:rgba(0,0,0,.05);color:#1d1d1f">Work</span><span style="font-size:11.5px;font-weight:500;padding:4px 10px;border-radius:7px;background:rgba(0,0,0,.05);color:#1d1d1f">Couch</span></div></div>
+        <div style="height:.5px;background:rgba(0,0,0,.1)"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px"><span style="font-size:12.5px;font-weight:500;color:#0e6b36">Open Desk Map</span><svg viewBox="0 0 24 24" style="width:15px;height:15px;color:#86868b" fill="none"><use href="#i-gear"/></svg></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- macOS desk map window -->
+<div style="position:absolute;left:640px;top:3428px;width:640px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">macOS · desk map (traffic lights, vibrancy)</div>
+  <div style="border-radius:11px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.2);font-family:-apple-system,'SF Pro Text',system-ui,sans-serif;background:#ecedf0;border:.5px solid rgba(0,0,0,.12)">
+    <div style="position:relative;display:flex;align-items:center;height:38px;padding:0 13px;background:rgba(236,237,240,.85);backdrop-filter:blur(20px);border-bottom:.5px solid rgba(0,0,0,.08)">
+      <div style="display:flex;gap:8px"><span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span></div>
+      <span style="position:absolute;left:0;right:0;text-align:center;font-size:13px;font-weight:600;color:#1d1d1f;pointer-events:none">Desk map</span>
+    </div>
+    <div style="padding:14px 18px 18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><span style="font-size:12px;color:#86868b">Drag a monitor onto a Mac/PC to route it.</span><span style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:#0e6b36;background:#e7f4ec;border:.5px solid #bfe0cb;padding:4px 10px;border-radius:13px"><span style="width:6px;height:6px;border-radius:50%;background:#1aa251"></span>All online</span></div>
+      <div style="position:relative;width:600px;height:248px">
+        <svg viewBox="0 0 600 248" style="position:absolute;left:0;top:0;width:600px;height:248px;z-index:1;pointer-events:none;overflow:visible">
+          <path d="M150,44 C 250,44 290,44 390,44" fill="none" stroke="#117c44" stroke-width="2.6" stroke-linecap="round"></path>
+          <path d="M150,124 C 250,124 290,124 390,124" fill="none" stroke="#3a6fb0" stroke-width="2.6" stroke-linecap="round"></path>
+          <path d="M150,44 C 256,44 284,204 390,204" fill="none" stroke="#117c44" stroke-width="2.6" stroke-linecap="round"></path>
+          <circle cx="150" cy="44" r="4" fill="#117c44"></circle><circle cx="150" cy="124" r="4" fill="#3a6fb0"></circle><circle cx="390" cy="44" r="4" fill="#117c44"></circle><circle cx="390" cy="124" r="4" fill="#3a6fb0"></circle><circle cx="390" cy="204" r="4" fill="#117c44"></circle>
+        </svg>
+        <div style="position:absolute;left:0;top:8px;width:150px;height:72px;border-radius:11px;background:#fff;border:.5px solid rgba(0,0,0,.1);box-shadow:0 1px 3px rgba(0,0,0,.07);display:flex;align-items:center;gap:9px;padding:0 12px;overflow:hidden"><span style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#117c44"></span><span style="width:30px;height:30px;border-radius:8px;background:rgba(17,124,68,.12);color:#117c44;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:17px;height:17px" fill="none"><use href="#i-pc"/></svg></span><div><div style="font-size:13px;font-weight:600">Work</div><div style="font-size:10.5px;color:#86868b">2 displays</div></div></div>
+        <div style="position:absolute;left:0;top:88px;width:150px;height:72px;border-radius:11px;background:#fff;border:.5px solid rgba(0,0,0,.1);box-shadow:0 1px 3px rgba(0,0,0,.07);display:flex;align-items:center;gap:9px;padding:0 12px;overflow:hidden"><span style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#3a6fb0"></span><span style="width:30px;height:30px;border-radius:8px;background:rgba(58,111,176,.12);color:#3a6fb0;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:17px;height:17px" fill="none"><use href="#i-pc"/></svg></span><div><div style="font-size:13px;font-weight:600">Gaming</div><div style="font-size:10.5px;color:#86868b">1 display</div></div></div>
+        <div style="position:absolute;left:0;top:168px;width:150px;height:72px;border-radius:11px;background:#fff;border:.5px solid rgba(0,0,0,.1);box-shadow:0 1px 3px rgba(0,0,0,.07);display:flex;align-items:center;gap:9px;padding:0 12px;overflow:hidden"><span style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#0e8a8a"></span><span style="width:30px;height:30px;border-radius:8px;background:rgba(14,138,138,.13);color:#0e8a8a;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:17px;height:17px" fill="none"><use href="#i-server"/></svg></span><div><div style="font-size:13px;font-weight:600">Mac mini</div><div style="font-size:10.5px;color:#86868b">idle</div></div></div>
+        <div style="position:absolute;left:390px;top:8px;width:210px;height:72px;border-radius:11px;background:#fff;border:.5px solid rgba(0,0,0,.1);box-shadow:0 1px 3px rgba(0,0,0,.07);display:flex;align-items:center;gap:9px;padding:0 13px"><span style="width:28px;height:28px;border-radius:7px;background:rgba(17,124,68,.12);color:#117c44;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:17px;height:17px" fill="none"><use href="#i-monitor"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">Left 27"</div><div style="font-size:10px;color:#86868b">DP-1 · 1440p</div></div><span style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:500;color:#3a3a3c"><span style="width:6px;height:6px;border-radius:50%;background:#117c44"></span>Work</span></div>
+        <div style="position:absolute;left:390px;top:88px;width:210px;height:72px;border-radius:11px;background:#fff;border:.5px solid rgba(0,0,0,.1);box-shadow:0 1px 3px rgba(0,0,0,.07);display:flex;align-items:center;gap:9px;padding:0 13px"><span style="width:28px;height:28px;border-radius:7px;background:rgba(58,111,176,.12);color:#3a6fb0;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:17px;height:17px" fill="none"><use href="#i-monitor"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">Center 32"</div><div style="font-size:10px;color:#86868b">USB-C · 4K</div></div><span style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:500;color:#3a3a3c"><span style="width:6px;height:6px;border-radius:50%;background:#3a6fb0"></span>Gaming</span></div>
+        <div style="position:absolute;left:390px;top:168px;width:210px;height:72px;border-radius:11px;background:#fff;border:.5px solid rgba(0,0,0,.1);box-shadow:0 1px 3px rgba(0,0,0,.07);display:flex;align-items:center;gap:9px;padding:0 13px"><span style="width:28px;height:28px;border-radius:7px;background:rgba(17,124,68,.12);color:#117c44;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:17px;height:17px" fill="none"><use href="#i-monitor"/></svg></span><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">Right 27"</div><div style="font-size:10px;color:#86868b">DP-2 · 1440p</div></div><span style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:500;color:#3a3a3c"><span style="width:6px;height:6px;border-radius:50%;background:#117c44"></span>Work</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- GNOME / Linux flyout -->
+<div style="position:absolute;left:1320px;top:3428px;width:520px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#6a6a6a">GNOME / Linux · top-bar popover (Adwaita, dark)</div>
+  <div style="border-radius:11px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.3);font-family:'Cantarell','Inter',system-ui,sans-serif;background:linear-gradient(165deg,#3b4252,#2a2f3a)">
+    <!-- top bar -->
+    <div style="height:28px;display:flex;align-items:center;padding:0 13px;background:#0b0b0d;color:#e6e6e6;font-size:12.5px">
+      <span style="font-weight:600">Activities</span>
+      <div style="flex:1"></div>
+      <span style="font-weight:600;font-size:12.5px">Fri 09:41</span>
+      <div style="flex:1"></div>
+      <span style="display:flex;align-items:center;gap:9px"><svg viewBox="0 0 24 24" style="width:14px;height:14px;color:#e6e6e6" fill="none"><use href="#i-net"/></svg><svg viewBox="0 0 24 24" style="width:14px;height:14px;color:#e6e6e6" fill="none"><use href="#i-volume"/></svg><span style="width:18px;height:18px;border-radius:5px;background:linear-gradient(160deg,#2c9e54,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:12px;height:12px;color:#fff" fill="none"><use href="#i-logo"/></svg></span></span>
+    </div>
+    <!-- popover -->
+    <div style="position:relative;padding:10px 12px 16px;display:flex;justify-content:flex-end">
+      <div style="width:312px;border-radius:13px;background:#36363a;border:1px solid rgba(255,255,255,.07);box-shadow:0 14px 34px rgba(0,0,0,.45);overflow:hidden;color:#fff">
+        <div style="display:flex;align-items:center;gap:9px;padding:13px 14px 10px"><span style="width:24px;height:24px;border-radius:7px;background:linear-gradient(160deg,#2c9e54,#0c5e32);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" style="width:15px;height:15px;color:#fff" fill="none"><use href="#i-logo"/></svg></span><span style="font-size:14px;font-weight:700;flex:1">screen-hop</span><span style="display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#78d693"><span style="width:6px;height:6px;border-radius:50%;background:#3ddc84"></span>3 online</span></div>
+        <div style="padding:2px 10px 8px"><div style="border-radius:12px;overflow:hidden;background:rgba(255,255,255,.05)">
+          <div style="display:flex;align-items:center;gap:11px;padding:10px 12px"><svg viewBox="0 0 24 24" style="width:17px;height:17px;color:#4abc7c" fill="none"><use href="#i-monitor"/></svg><span style="flex:1;font-size:13px;font-weight:500">Left 27"</span><span style="font-size:11.5px;color:rgba(255,255,255,.62)">Work</span><svg viewBox="0 0 24 24" style="width:14px;height:14px;color:rgba(255,255,255,.4)" fill="none"><use href="#i-chev-r"/></svg></div>
+          <div style="height:1px;background:rgba(255,255,255,.07);margin:0 12px"></div>
+          <div style="display:flex;align-items:center;gap:11px;padding:10px 12px"><svg viewBox="0 0 24 24" style="width:17px;height:17px;color:#5a93d6" fill="none"><use href="#i-monitor"/></svg><span style="flex:1;font-size:13px;font-weight:500">Center 32"</span><span style="font-size:11.5px;color:rgba(255,255,255,.62)">Gaming</span><svg viewBox="0 0 24 24" style="width:14px;height:14px;color:rgba(255,255,255,.4)" fill="none"><use href="#i-chev-r"/></svg></div>
+          <div style="height:1px;background:rgba(255,255,255,.07);margin:0 12px"></div>
+          <div style="display:flex;align-items:center;gap:11px;padding:10px 12px"><svg viewBox="0 0 24 24" style="width:17px;height:17px;color:#4abc7c" fill="none"><use href="#i-monitor"/></svg><span style="flex:1;font-size:13px;font-weight:500">Right 27"</span><span style="font-size:11.5px;color:rgba(255,255,255,.62)">Work</span><svg viewBox="0 0 24 24" style="width:14px;height:14px;color:rgba(255,255,255,.4)" fill="none"><use href="#i-chev-r"/></svg></div>
+        </div></div>
+        <div style="padding:2px 12px 12px"><div style="font-size:10px;font-weight:700;letter-spacing:.4px;color:rgba(255,255,255,.45);margin:4px 2px 8px">PRESETS</div><div style="display:flex;gap:7px;flex-wrap:wrap"><span style="font-size:12px;font-weight:600;padding:6px 12px;border-radius:18px;background:#3ddc84;color:#06270f">Trading</span><span style="font-size:12px;font-weight:600;padding:6px 12px;border-radius:18px;background:rgba(255,255,255,.08)">Work</span><span style="font-size:12px;font-weight:600;padding:6px 12px;border-radius:18px;background:rgba(255,255,255,.08)">Couch</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Per-platform capability note -->
+<div style="position:absolute;left:1880px;top:3428px;width:500px">
+  <div data-drags-parent="1" style="position:absolute;top:-24px;font:600 12px 'Segoe UI',system-ui;color:#0e6b36">★ Calibration gains a per-OS capability note</div>
+  <div style="border-radius:9px;overflow:hidden;box-shadow:0 12px 36px rgba(0,0,0,.14);background:#fff;border:1px solid rgba(0,0,0,.08);color:#1a1a1a;font-family:'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif">
+    <div style="padding:16px 18px 6px"><div style="font-size:15px;font-weight:600">Per-monitor capability</div><div style="font-size:12px;color:#8a8a8a;margin-top:2px">screen-hop probes each link per OS. Some are read-only or one-directional.</div></div>
+    <div style="padding:8px 18px 4px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:9px;background:#f7f8f9;border:1px solid rgba(0,0,0,.06)">
+        <svg viewBox="0 0 24 24" style="width:18px;height:18px;color:#117c44" fill="none"><use href="#i-monitor"/></svg>
+        <div style="flex:1"><div style="font-size:13px;font-weight:600">Left 27" <span style="font-size:10px;font-weight:700;color:#5c5c5c;background:rgba(0,0,0,.06);padding:1px 6px;border-radius:7px;margin-left:3px">Windows</span></div><div style="font-size:11px;color:#0e6b36;margin-top:1px">DDC/CI confirmed · bidirectional</div></div>
+        <svg viewBox="0 0 24 24" style="width:18px;height:18px;color:#0e6b36" fill="none"><use href="#i-check"/></svg>
+      </div>
+      <div style="display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:9px;background:#fff8ec;border:1px solid #efd9ae">
+        <svg viewBox="0 0 24 24" style="width:18px;height:18px;color:#b26a00" fill="none"><use href="#i-monitor"/></svg>
+        <div style="flex:1"><div style="font-size:13px;font-weight:600">Center 32" <span style="font-size:10px;font-weight:700;color:#8a5300;background:#fff;border:1px solid #efd9ae;padding:1px 6px;border-radius:7px;margin-left:3px">macOS</span></div><div style="font-size:11px;color:#8a5300;margin-top:1px">DDC over USB-C unreliable on Apple Silicon</div></div>
+        <span style="font-size:11px;font-weight:600;color:#8a5300;background:#fff;border:1px solid #efd9ae;padding:4px 9px;border-radius:7px">Use input button</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:9px;background:#fff8ec;border:1px solid #efd9ae">
+        <svg viewBox="0 0 24 24" style="width:18px;height:18px;color:#b26a00" fill="none"><use href="#i-monitor"/></svg>
+        <div style="flex:1"><div style="font-size:13px;font-weight:600">Right 27" <span style="font-size:10px;font-weight:700;color:#8a5300;background:#fff;border:1px solid #efd9ae;padding:1px 6px;border-radius:7px;margin-left:3px">Linux</span></div><div style="font-size:11px;color:#8a5300;margin-top:1px">Needs i2c access — run as user in <span style="font-family:ui-monospace,monospace">i2c</span> group</div></div>
+        <span style="font-size:11px;font-weight:600;color:#fff;background:#117c44;padding:5px 11px;border-radius:7px">Grant</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:12px 18px 16px;font-size:11px;color:#8a8a8a"><svg viewBox="0 0 24 24" style="width:13px;height:13px" fill="none"><use href="#i-info"/></svg>The calibration matrix carries these notes per (PC, monitor) cell.</div>
+  </div>
+</div></x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals(){
+    const D={'--bg':'#1f1f1f','--bg-2':'#272727','--layer':'#2b2b2b','--layer-2':'#323232','--subtle':'rgba(255,255,255,.05)','--subtle-hover':'rgba(255,255,255,.085)','--subtle-press':'rgba(255,255,255,.07)','--stroke':'rgba(255,255,255,.09)','--ctl-stroke':'rgba(255,255,255,.16)','--kbd-bg':'rgba(255,255,255,.1)','--text':'#ffffff','--text-2':'rgba(255,255,255,.73)','--text-3':'rgba(255,255,255,.46)','--accent':'#4abc7c','--accent-hover':'#57c886','--accent-press':'#3fa86c','--accent-text':'#6fd49a','--on-accent':'#07210f','--accent-soft':'rgba(74,188,124,.16)','--accent-soft-stroke':'rgba(74,188,124,.36)','--menu':'#2d2d2d','--danger':'#e04a3c','--danger-text':'#ff99a0','--danger-bg':'#371d1b','--danger-stroke':'#5a2e2a','--warn-text':'#f2c879','--warn-accent':'#e7a93c','--warn-bg':'#312a18','--warn-stroke':'#544326','--ok-text':'#74d08f','--ok-bg':'#16301e','--shadow':'rgba(0,0,0,.5)','--shadow-strong':'rgba(0,0,0,.62)'};
+    return { D: Object.keys(D).map(k=>k+':'+D[k]).join(';') };
+  }
+}
+</script>
+</body>
+</html>
