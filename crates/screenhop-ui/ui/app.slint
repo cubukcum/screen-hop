@@ -13,6 +13,7 @@ export component AppWindow inherits Window {
     in-out property <bool> dark <=> Theme.dark;
     in-out property <int> screen: 1;   // 0 = flyout, 1 = onboarding wizard
     in-out property <bool> dev-chrome: true;   // hidden in snapshot mode
+    in-out property <int> wizard-step: 1;      // which onboarding step to show
 
     in-out property <[MonitorRow]> monitors: [
         { name: "Left 27\"", spec: "DP-1 · 1440p", active: 0 },
@@ -63,6 +64,7 @@ export component AppWindow inherits Window {
         }
 
         if screen == 1: OnboardingWizard {
+            step <=> root.wizard-step;
             close => { }
         }
     }

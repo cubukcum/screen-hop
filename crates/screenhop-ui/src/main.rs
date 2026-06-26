@@ -22,6 +22,11 @@ fn main() -> Result<(), slint::PlatformError> {
     if let Some(s) = arg_value(&args, "--screen") {
         app.set_screen(if s == "wizard" { 1 } else { 0 });
     }
+    if let Some(s) = arg_value(&args, "--step") {
+        if let Ok(n) = s.parse::<i32>() {
+            app.set_wizard_step(n);
+        }
+    }
 
     if let Some(path) = arg_value(&args, "--shot") {
         app.set_dev_chrome(false);

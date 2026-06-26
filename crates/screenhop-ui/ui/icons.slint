@@ -12,6 +12,18 @@ export component StrokeIcon inherits Path {
     fill: transparent;
 }
 
+// Info glyph (circle + stem + dot) — avoids arc commands for renderer portability.
+export component InfoGlyph inherits Rectangle {
+    in property <color> tint: Theme.text3;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    border-width: 1.5px;
+    border-color: tint;
+    Rectangle { width: 1.6px; height: 1.6px; y: 3px; border-radius: 1px; background: tint; }
+    Rectangle { width: 1.6px; height: 4.5px; y: 6px; border-radius: 0.8px; background: tint; }
+}
+
 // QR placeholder (three finder squares) — stands in for the real QR like the design's i-qr.
 export component QrGlyph inherits Rectangle {
     in property <color> tint: Theme.text2;
