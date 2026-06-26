@@ -1,0 +1,25 @@
+import { Theme } from "theme.slint";
+
+// Stroked line icon from the design's SVG symbol set. Set `commands` (SVG path data, 24×24
+// viewbox) and `tint` on each instance; size via width/height.
+export component StrokeIcon inherits Path {
+    in property <color> tint: Theme.text2;
+    in property <length> sw: 1.7px;
+    viewbox-width: 24;
+    viewbox-height: 24;
+    stroke: tint;
+    stroke-width: sw;
+    fill: transparent;
+}
+
+// QR placeholder (three finder squares) — stands in for the real QR like the design's i-qr.
+export component QrGlyph inherits Rectangle {
+    in property <color> tint: Theme.text2;
+    width: 42px;
+    height: 42px;
+    Rectangle { x: 0px;  y: 0px;  width: 16px; height: 16px; border-radius: 3px; border-width: 2.5px; border-color: tint; }
+    Rectangle { x: 26px; y: 0px;  width: 16px; height: 16px; border-radius: 3px; border-width: 2.5px; border-color: tint; }
+    Rectangle { x: 0px;  y: 26px; width: 16px; height: 16px; border-radius: 3px; border-width: 2.5px; border-color: tint; }
+    Rectangle { x: 28px; y: 28px; width: 6px;  height: 6px;  border-radius: 1px; background: tint; }
+    Rectangle { x: 36px; y: 36px; width: 6px;  height: 6px;  border-radius: 1px; background: tint; }
+}
