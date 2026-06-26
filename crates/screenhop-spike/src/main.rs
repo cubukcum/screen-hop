@@ -4,6 +4,7 @@
 
 use screenhop_core::MonitorDriver;
 use screenhop_ddc::DdcHiDriver;
+use screenhop_identity::group_by_id;
 use std::io::{self, Write};
 use std::{thread, time::Duration};
 
@@ -32,10 +33,11 @@ fn print_table(driver: &mut DdcHiDriver) {
     let monitors = driver.monitors();
     println!();
     println!(
-        "{:<3} {:<30} {:<12} {:<10} Backend",
-        "#", "Monitor", "Input(0x60)", "Serial"
+        "{:<3} {:<26} {:<7} {:<14} Backend",
+        "#", "Monitor", "Input", "MonitorId"
     );
     println!("{}", "-".repeat(78));
+    let mut fingerprints = Vec::new();
     for (i, m) in monitors.iter().enumerate() {
         let input = match driver.try_read_input(&m.id) {
             Some(v) => format!("0x{v:02X}"),
@@ -46,18 +48,27 @@ fn print_table(driver: &mut DdcHiDriver) {
             m.manufacturer.clone().unwrap_or_default(),
             m.model.clone().unwrap_or_else(|| "Generic Monitor".into())
         );
-        let serial = m.serial.map(|s| s.to_string()).unwrap_or_else(|| "-".into());
+        let mid = m.monitor_id().unwrap_or_else(|| "(no identity)".into());
+        if let Some(fp) = &m.fingerprint {
+            fingerprints.push(fp.clone());
+        }
         println!(
-            "{:<3} {:<30} {:<12} {:<10} {}",
+            "{:<3} {:<26} {:<7} {:<14} {}",
             i,
-            truncate(label.trim(), 30),
+            truncate(label.trim(), 26),
             input,
-            serial,
+            mid,
             m.backend
         );
     }
+    let distinct = group_by_id(&fingerprints).len();
     println!();
-    println!("'#' is the index to use in the menu. 'Input' is the monitor's current source.");
+    println!(
+        "{} display handle(s) -> {} distinct monitor(s) by EDID fingerprint.",
+        monitors.len(),
+        distinct
+    );
+    println!("'#' = menu index; 'Input' = current source; 'MonitorId' = stable cross-PC id.");
 }
 
 fn interactive(driver: &mut DdcHiDriver) {

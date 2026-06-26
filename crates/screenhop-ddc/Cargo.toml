@@ -6,4 +6,5 @@ license.workspace = true
 
 [dependencies]
 screenhop-core = { path = "../screenhop-core" }
+screenhop-identity = { path = "../screenhop-identity" }
 ddc-hi = "0.4"

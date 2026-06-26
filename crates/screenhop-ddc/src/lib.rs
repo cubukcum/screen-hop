@@ -5,20 +5,32 @@
 //! it with the composite EDID fingerprint. Not unit-tested — it needs real hardware; the
 //! actuation logic that depends on it is tested through `MonitorDriver` fakes in screenhop-core.
 
-use ddc_hi::{Ddc, Display};
+use ddc_hi::{Ddc, Display, DisplayInfo};
 use screenhop_core::{DdcWriteResult, MonitorDriver};
+use screenhop_identity::MonitorFingerprint;
 
 /// VCP feature code for Input Select.
 const VCP_INPUT_SELECT: u8 = 0x60;
 
-/// Identity + backend for a discovered monitor (provisional pre-M2 identity).
+/// Identity + backend for a discovered monitor.
 #[derive(Debug, Clone)]
 pub struct MonitorInfo {
+    /// Provisional per-handle id (backend-specific). Use [`MonitorInfo::monitor_id`] for the
+    /// stable cross-PC id.
     pub id: String,
     pub manufacturer: Option<String>,
     pub model: Option<String>,
     pub serial: Option<u32>,
     pub backend: String,
+    /// Composite EDID fingerprint, when enough identity is available (M2).
+    pub fingerprint: Option<MonitorFingerprint>,
+}
+
+impl MonitorInfo {
+    /// Stable cross-PC monitor id, when a fingerprint could be built.
+    pub fn monitor_id(&self) -> Option<String> {
+        self.fingerprint.as_ref().map(MonitorFingerprint::monitor_id)
+    }
 }
 
 /// Production [`MonitorDriver`] over ddc-hi.
@@ -58,6 +70,7 @@ impl DdcHiDriver {
                 model: d.info.model_name.clone(),
                 serial: d.info.serial,
                 backend: format!("{:?}", d.info.backend),
+                fingerprint: fingerprint_from_info(&d.info),
             })
             .collect()
     }
@@ -96,6 +109,32 @@ impl MonitorDriver for DdcHiDriver {
             Err(_) => DdcWriteResult::Failed,
         }
     }
+}
+
+/// Build a composite fingerprint from a ddc-hi `DisplayInfo`. Prefers the raw EDID block
+/// (Linux/macOS); falls back to parsed identity parts (Windows exposes no raw EDID). Returns
+/// `None` when the backend reports no usable identity at all (e.g. a generic Windows handle).
+fn fingerprint_from_info(info: &DisplayInfo) -> Option<MonitorFingerprint> {
+    if let Some(edid) = &info.edid_data {
+        if let Ok(fp) = MonitorFingerprint::from_edid(edid) {
+            return Some(fp);
+        }
+    }
+
+    let has_identity = info.manufacturer_id.is_some()
+        || info.serial.is_some()
+        || info.serial_number.is_some()
+        || info.model_id.is_some();
+    if !has_identity {
+        return None;
+    }
+
+    Some(MonitorFingerprint::from_parts(
+        info.manufacturer_id.clone().unwrap_or_default(),
+        info.model_id.unwrap_or(0),
+        info.serial.unwrap_or(0),
+        info.serial_number.clone(),
+    ))
 }
 
 fn provisional_id(index: usize, d: &Display) -> String {

@@ -11,3 +11,4 @@ path = "src/main.rs"
 [dependencies]
 screenhop-core = { path = "../screenhop-core" }
 screenhop-ddc = { path = "../screenhop-ddc" }
+screenhop-identity = { path = "../screenhop-identity" }
