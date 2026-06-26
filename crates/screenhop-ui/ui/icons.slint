@@ -24,6 +24,15 @@ export component InfoGlyph inherits Rectangle {
     Rectangle { width: 1.6px; height: 4.5px; y: 6px; border-radius: 0.8px; background: tint; }
 }
 
+// Identify glyph (beacon: center dot + ring) — the design's i-identify.
+export component IdentifyGlyph inherits Rectangle {
+    in property <color> tint: Theme.text;
+    width: 14px;
+    height: 14px;
+    Rectangle { width: 13px; height: 13px; border-radius: 7px; border-width: 1.5px; border-color: tint; background: transparent; }
+    Rectangle { width: 5px; height: 5px; border-radius: 3px; background: tint; }
+}
+
 // QR placeholder (three finder squares) — stands in for the real QR like the design's i-qr.
 export component QrGlyph inherits Rectangle {
     in property <color> tint: Theme.text2;
