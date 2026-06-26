@@ -596,6 +596,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "screenhop-state"
+version = "0.0.0"
+
+[[package]]
 name = "serde"
 version = "1.0.228"
 source = "registry+https://github.com/rust-lang/crates.io-index"
