@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { StrokeIcon, QrGlyph, InfoGlyph } from "icons.slint";
+import { StrokeIcon, QrGlyph, InfoGlyph, IdentifyGlyph } from "icons.slint";
 
 // Pill button (primary = accent fill, secondary = subtle outline). Width hugs its label.
 component Btn inherits Rectangle {
@@ -220,6 +220,60 @@ component CalRow inherits HorizontalLayout {
     CalStatusCell { kind: root.k1; }
     VDiv { }
     CalStatusCell { kind: root.k2; }
+}
+
+// A look-alike monitor card for Step 4: a display preview (flashing gradient / idle),
+// a Flash button, and a name field. `active` = currently flashing/being identified.
+component MonNameCard inherits Rectangle {
+    in property <bool> active;
+    in property <string> name;
+    horizontal-stretch: 1;
+    border-radius: 10px;
+    background: Theme.layer;
+    border-width: active ? 2px : 1px;
+    border-color: active ? Theme.accent : Theme.stroke;
+    VerticalLayout {
+        padding: 13px;
+        spacing: 0px;
+        Rectangle {
+            height: 62px;
+            border-radius: 7px;
+            background: active ? @linear-gradient(135deg, #107c41 0%, #0c5e32 100%) : (Theme.dark ? #ffffff14 : #e8e8e8);
+            if active : Path {
+                width: 26px; height: 26px;
+                viewbox-width: 24; viewbox-height: 24;
+                fill: #ffffff;
+                commands: "M13 3 L4.5 13.5 L11 13.5 L10 21 L19 10 L12.5 10 Z";
+            }
+            if !active : StrokeIcon { width: 24px; height: 24px; tint: Theme.text3; commands: "M2.5 4 L21.5 4 L21.5 17 L2.5 17 Z M8.5 20.5 L15.5 20.5 M12 17 L12 20.3"; }
+        }
+        Rectangle { height: 11px; }
+        Rectangle {
+            height: 30px;
+            border-radius: 6px;
+            background: active ? Theme.accent-soft : Theme.subtle;
+            border-width: 1px;
+            border-color: active ? Theme.accent-soft-stroke : Theme.ctl-stroke;
+            HorizontalLayout {
+                alignment: center;
+                spacing: 6px;
+                VerticalLayout { alignment: center; IdentifyGlyph { tint: active ? Theme.accent-text : Theme.text; } }
+                Text { text: active ? "Flashing…" : "Flash to identify"; color: active ? Theme.accent-text : Theme.text; font-size: 12px; font-weight: 600; vertical-alignment: center; }
+            }
+        }
+        Rectangle { height: 9px; }
+        Rectangle {
+            height: 32px;
+            border-radius: 6px;
+            background: Theme.layer;
+            border-width: 1px;
+            border-color: active ? Theme.accent : Theme.ctl-stroke;
+            HorizontalLayout {
+                padding-left: 10px;
+                Text { text: root.name; color: Theme.text; font-size: 13px; font-weight: 600; vertical-alignment: center; }
+            }
+        }
+    }
 }
 
 // Onboarding wizard — chrome + 4-step stepper + step content + footer (DESIGN-SPEC "Onboarding").
@@ -488,11 +542,30 @@ export component OnboardingWizard inherits Rectangle {
         }
 
         if step == 4 : VerticalLayout {
-            padding: 48px;
-            alignment: center;
+            padding-left: 18px;
+            padding-right: 18px;
+            padding-top: 14px;
+            padding-bottom: 16px;
+            spacing: 0px;
+
+            Text { text: "Step 4 of 4 · Names"; color: Theme.text3; font-size: 11.5px; font-weight: 700; }
+            Rectangle { height: 8px; }
+            Text { text: "Name your look-alikes"; color: Theme.text; font-size: 17px; font-weight: 600; }
+            Text { text: "Two identical Dell U2723QE share the same name. Flash each one to see which is which, then label it."; color: Theme.text2; font-size: 12.5px; wrap: word-wrap; }
+            Rectangle { height: 15px; }
+
             HorizontalLayout {
-                alignment: center;
-                Text { text: "Step 4 (Names) — coming next"; color: Theme.text3; font-size: 14px; }
+                spacing: 12px;
+                MonNameCard { active: true; name: "Left 27\""; }
+                MonNameCard { active: false; name: "Right 27\""; }
+            }
+
+            Rectangle { height: 13px; }
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+                VerticalLayout { alignment: center; InfoGlyph { tint: Theme.text3; } }
+                Text { text: "Flashing inverts the monitor briefly so you can spot it on your desk."; color: Theme.text3; font-size: 11.5px; vertical-alignment: center; }
             }
         }
 
@@ -512,7 +585,7 @@ export component OnboardingWizard inherits Rectangle {
                 if step == 3 : VerticalLayout { alignment: center; Text { text: "You can finish later — unknown pairs just can't be auto-switched yet."; color: Theme.text3; font-size: 11.5px; vertical-alignment: center; } }
                 Rectangle { horizontal-stretch: 1; }
                 Btn {
-                    label: step == 1 ? "Next: monitors" : step == 2 ? "Next: calibrate" : step == 3 ? "Next: names" : "Finish";
+                    label: step == 1 ? "Next: monitors" : step == 2 ? "Next: calibrate" : step == 3 ? "Next: names" : "Finish setup";
                     primary: true;
                     clicked => { if (step < 4) { step += 1; } }
                 }
