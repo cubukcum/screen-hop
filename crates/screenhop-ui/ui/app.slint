@@ -1,33 +1,40 @@
 import { Theme } from "theme.slint";
-import { TrayFlyout } from "tray_flyout.slint";
+import { TrayFlyout, MonitorRow } from "tray_flyout.slint";
 
 export { Theme }
-export { TrayFlyout }
 
-// Preview window hosting the tray flyout with sample data. The real app will surface the
-// TrayFlyout from a system-tray popover and feed it live mesh state.
+// Preview window hosting the tray flyout with sample data. The real app surfaces the
+// TrayFlyout from a system-tray popover and feeds it live mesh state.
 export component AppWindow inherits Window {
     title: "screen-hop";
+    default-font-family: "Segoe UI Variable Text";
     background: Theme.bg;
     in-out property <bool> dark <=> Theme.dark;
 
+    in-out property <[MonitorRow]> monitors: [
+        { name: "Left 27\"", spec: "DP-1 · 1440p", active: 0 },
+        { name: "Center 32\"", spec: "HDMI-2 · 4K", active: 1 },
+        { name: "Right 27\"", spec: "DP-2 · 1440p", active: 0 },
+    ];
+
     VerticalLayout {
-        padding: 16px;
+        padding: 18px;
         alignment: start;
         TrayFlyout {
             online-count: 3;
-            monitors: [
-                { name: "Dell U2723QE", spec: "27\" · 4K · DisplayPort", owner: "Work PC", accent: Theme.pc-work },
-                { name: "LG 27GP950-B", spec: "27\" · 4K · HDMI 2", owner: "Gaming PC", accent: Theme.pc-gaming },
-                { name: "AOC 27P2DG5", spec: "27\" · 1440p · DisplayPort", owner: "Home-lab", accent: Theme.pc-homelab },
+            monitors: root.monitors;
+            peers: [
+                { label: "Work", color: Theme.pc-work },
+                { label: "Gam", color: Theme.pc-gaming },
+                { label: "Lab", color: Theme.pc-homelab },
             ];
             presets: [
-                { name: "All to Work", active: true },
-                { name: "Trading", active: false },
+                { name: "Trading", active: true },
+                { name: "Work", active: false },
                 { name: "Couch", active: false },
-                { name: "Pair", active: false },
             ];
             toggle-theme => { Theme.dark = !Theme.dark; }
+            switch(mi, pi) => { root.monitors[mi].active = pi; }
         }
     }
 }
