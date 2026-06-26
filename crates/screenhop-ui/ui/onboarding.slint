@@ -1,0 +1,269 @@
+import { Theme } from "theme.slint";
+import { StrokeIcon, QrGlyph } from "icons.slint";
+
+// Pill button (primary = accent fill, secondary = subtle outline). Width hugs its label.
+component Btn inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary: false;
+    in property <length> h: 32px;
+    callback clicked;
+    height: h;
+    width: t.preferred-width + 34px;
+    border-radius: 6px;
+    background: primary
+        ? (ta.pressed ? #0c5e32 : Theme.accent)
+        : (ta.has-hover ? Theme.bg2 : Theme.subtle);
+    border-width: primary ? 0px : 1px;
+    border-color: Theme.ctl-stroke;
+    ta := TouchArea { clicked => { root.clicked(); } }
+    t := Text {
+        text: root.label;
+        color: primary ? #ffffff : Theme.text;
+        font-size: 13px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component StepBadge inherits HorizontalLayout {
+    in property <int> index;
+    in property <int> current;
+    in property <string> label;
+    property <bool> active: index == current;
+    spacing: 6px;
+    Rectangle {
+        width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: active ? Theme.accent : transparent;
+        border-width: active ? 0px : 1px;
+        border-color: Theme.ctl-stroke;
+        Text { text: "\{index}"; color: active ? #ffffff : Theme.text3; font-size: 10px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+    }
+    Text { text: label; color: active ? Theme.accent-text : Theme.text3; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
+}
+
+// A discovery row: an icon badge, name + IP, and a trailing control (Pair button or Paired chip).
+component DiscoveryItem inherits Rectangle {
+    in property <string> name;
+    in property <string> ip;
+    in property <color> accent;
+    in property <string> icon;     // StrokeIcon commands
+    in property <bool> paired;
+    height: 48px;
+    border-radius: 8px;
+    background: Theme.layer;
+    border-width: 1px;
+    border-color: Theme.stroke;
+    HorizontalLayout {
+        padding-left: 11px;
+        padding-right: 11px;
+        spacing: 10px;
+        Rectangle {
+            width: 30px; height: 30px; border-radius: 7px;
+            background: root.accent.with-alpha(0.13);
+            y: (parent.height - self.height) / 2;
+            StrokeIcon { width: 17px; height: 17px; tint: root.accent; commands: root.icon; }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 1px;
+            Text { text: root.name; color: Theme.text; font-size: 13px; font-weight: 600; }
+            Text { text: root.ip; color: Theme.text3; font-size: 11px; }
+        }
+        if !root.paired : Btn { label: "Pair"; h: 30px; }
+        if root.paired : HorizontalLayout {
+            spacing: 5px;
+            StrokeIcon { width: 14px; height: 14px; tint: Theme.accent-text; sw: 2.1px; commands: "M5 12.5 L9.5 17 L19 7"; }
+            Text { text: "Paired"; color: Theme.accent-text; font-size: 12px; font-weight: 600; vertical-alignment: center; }
+        }
+    }
+}
+
+// Onboarding wizard — chrome + 4-step stepper + step content + footer (DESIGN-SPEC "Onboarding").
+export component OnboardingWizard inherits Rectangle {
+    in-out property <int> step: 1;   // 1..4
+    callback close();
+
+    width: 600px;
+    border-radius: 9px;
+    background: Theme.bg;
+    border-width: 1px;
+    border-color: Theme.stroke;
+    drop-shadow-blur: 30px;
+    drop-shadow-color: #00000022;
+    drop-shadow-offset-y: 8px;
+
+    VerticalLayout {
+        // -------- title bar --------
+        Rectangle {
+            height: 36px;
+            background: Theme.bg2;
+            HorizontalLayout {
+                padding-left: 10px;
+                spacing: 8px;
+                Rectangle {
+                    width: 16px; height: 16px; border-radius: 4px;
+                    y: (parent.height - self.height) / 2;
+                    background: @linear-gradient(160deg, #117c44 0%, #0c5e32 100%);
+                    StrokeIcon { width: 11px; height: 11px; tint: #ffffff; sw: 2px; commands: "M2.6 9 L13 9 L13 18 L2.6 18 Z M12.8 7.6 C13.6 4.2 17 2.9 19.6 4.8 M20.7 3.1 L21.1 5.8 L18.4 5.9"; }
+                }
+                Text { text: "Set up screen-hop"; color: Theme.text2; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
+                Rectangle { horizontal-stretch: 1; }
+                Rectangle {
+                    width: 38px;
+                    TouchArea { clicked => { root.close(); } }
+                    StrokeIcon { width: 13px; height: 13px; tint: Theme.text3; sw: 1.6px; commands: "M6 6 L18 18 M18 6 L6 18"; }
+                }
+            }
+        }
+
+        // -------- stepper --------
+        HorizontalLayout {
+            padding-left: 18px;
+            padding-right: 18px;
+            padding-top: 12px;
+            padding-bottom: 4px;
+            spacing: 6px;
+            StepBadge { index: 1; current: step; label: "Pair"; }
+            Rectangle { horizontal-stretch: 1; height: 1px; background: Theme.stroke; }
+            StepBadge { index: 2; current: step; label: "Monitors"; }
+            Rectangle { horizontal-stretch: 1; height: 1px; background: Theme.stroke; }
+            StepBadge { index: 3; current: step; label: "Calibrate"; }
+            Rectangle { horizontal-stretch: 1; height: 1px; background: Theme.stroke; }
+            StepBadge { index: 4; current: step; label: "Names"; }
+        }
+
+        // -------- content --------
+        Rectangle {
+            vertical-stretch: 1;
+            if step == 1 : VerticalLayout {
+                padding-left: 18px;
+                padding-right: 18px;
+                padding-top: 14px;
+                padding-bottom: 16px;
+                spacing: 0px;
+
+                Text { text: "Pair another PC"; color: Theme.text; font-size: 17px; font-weight: 600; }
+                Text { text: "Every PC runs screen-hop as an equal peer — there is no server."; color: Theme.text2; font-size: 12.5px; }
+
+                // code card + QR
+                HorizontalLayout {
+                    padding-top: 14px;
+                    spacing: 12px;
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        border-radius: 9px;
+                        background: Theme.layer;
+                        border-width: 1px;
+                        border-color: Theme.stroke;
+                        VerticalLayout {
+                            padding: 13px;
+                            spacing: 0px;
+                            Text { text: "THIS PC'S CODE"; color: Theme.text3; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
+                            HorizontalLayout {
+                                padding-top: 8px;
+                                spacing: 8px;
+                                Text { text: "HOP-4F2A-9C7E"; color: Theme.text; font-size: 21px; font-weight: 600; font-family: Theme.font-mono; letter-spacing: 1px; vertical-alignment: center; }
+                                Rectangle {
+                                    width: 28px; height: 28px; border-radius: 6px;
+                                    background: Theme.subtle; border-width: 1px; border-color: Theme.ctl-stroke;
+                                    y: 0px;
+                                    StrokeIcon { width: 14px; height: 14px; tint: Theme.text2; commands: "M9 9 L20 9 L20 20 L9 20 Z M5 15 L5 5 L7 3 L15 3"; }
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                            }
+                            Text { text: "On the other PC: open screen-hop → Add PC → type this code."; color: Theme.text2; font-size: 11.5px; wrap: word-wrap; }
+                        }
+                    }
+                    Rectangle {
+                        width: 96px;
+                        border-radius: 9px;
+                        background: Theme.layer;
+                        border-width: 1px;
+                        border-color: Theme.stroke;
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 6px;
+                            HorizontalLayout { alignment: center; QrGlyph { tint: Theme.text2; } }
+                            HorizontalLayout { alignment: center; Text { text: "Scan"; color: Theme.text2; font-size: 10px; } }
+                        }
+                    }
+                }
+
+                // divider
+                HorizontalLayout {
+                    padding-top: 15px;
+                    padding-bottom: 15px;
+                    spacing: 12px;
+                    Rectangle { horizontal-stretch: 1; height: 1px; background: Theme.stroke; y: (parent.height - self.height)/2; }
+                    Text { text: "or join from this PC"; color: Theme.text3; font-size: 11px; vertical-alignment: center; }
+                    Rectangle { horizontal-stretch: 1; height: 1px; background: Theme.stroke; y: (parent.height - self.height)/2; }
+                }
+
+                // join code input + Pair
+                HorizontalLayout {
+                    spacing: 8px;
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        height: 34px;
+                        border-radius: 6px;
+                        background: Theme.layer;
+                        border-width: 1px;
+                        border-color: Theme.ctl-stroke;
+                        HorizontalLayout {
+                            padding-left: 11px;
+                            Text { text: "HOP-____-____"; color: Theme.text3; font-size: 13px; font-family: Theme.font-mono; vertical-alignment: center; }
+                        }
+                    }
+                    Btn { label: "Pair"; primary: true; h: 34px; }
+                }
+
+                // add a host manually (summary)
+                HorizontalLayout {
+                    padding-top: 12px;
+                    padding-bottom: 14px;
+                    spacing: 6px;
+                    alignment: start;
+                    StrokeIcon { width: 13px; height: 13px; tint: Theme.accent-text; commands: "M12 5 L12 19 M5 12 L19 12"; }
+                    Text { text: "Add a host manually (IP / hostname)"; color: Theme.accent-text; font-size: 12px; font-weight: 600; vertical-alignment: center; }
+                }
+
+                // found on your network
+                Text { text: "FOUND ON YOUR NETWORK"; color: Theme.text3; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
+                Rectangle { height: 8px; }
+                DiscoveryItem { name: "Gaming"; ip: "192.168.1.42"; accent: Theme.pc-gaming; icon: "M6 3 L18 3 L18 21 L6 21 Z M9.5 17.5 L14.5 17.5"; paired: false; }
+                Rectangle { height: 7px; }
+                DiscoveryItem { name: "Home-lab"; ip: "192.168.1.17"; accent: Theme.pc-homelab; icon: "M3.5 5 L20.5 5 L20.5 10.5 L3.5 10.5 Z M3.5 13.5 L20.5 13.5 L20.5 19 L3.5 19 Z"; paired: true; }
+            }
+
+            if step != 1 : VerticalLayout {
+                alignment: center;
+                HorizontalLayout {
+                    alignment: center;
+                    Text { text: "Step \{step} — coming next"; color: Theme.text3; font-size: 14px; }
+                }
+            }
+        }
+
+        // -------- footer --------
+        Rectangle {
+            height: 1px;
+            background: Theme.stroke;
+        }
+        Rectangle {
+            background: Theme.layer2;
+            HorizontalLayout {
+                padding-left: 18px;
+                padding-right: 18px;
+                padding-top: 13px;
+                padding-bottom: 13px;
+                Btn { label: "Back"; clicked => { if (step > 1) { step -= 1; } } }
+                Rectangle { horizontal-stretch: 1; }
+                Btn { label: "Next: monitors"; primary: true; clicked => { if (step < 4) { step += 1; } } }
+            }
+        }
+    }
+}
