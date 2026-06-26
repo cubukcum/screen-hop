@@ -1,0 +1,13 @@
+[package]
+name = "screenhop-spike"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "screenhop-spike"
+path = "src/main.rs"
+
+[dependencies]
+screenhop-core = { path = "../screenhop-core" }
+screenhop-ddc = { path = "../screenhop-ddc" }

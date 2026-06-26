@@ -1,0 +1,9 @@
+[package]
+name = "screenhop-ddc"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+screenhop-core = { path = "../screenhop-core" }
+ddc-hi = "0.4"
