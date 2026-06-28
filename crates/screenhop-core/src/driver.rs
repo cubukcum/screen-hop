@@ -31,3 +31,35 @@ impl Delayer for RealDelayer {
         }
     }
 }
+
+/// Injectable monotonic clock so the actuation hard-ceiling (D5/§6.3) is enforceable AND
+/// unit-testable. Only differences between readings are meaningful (arbitrary epoch).
+pub trait Clock {
+    /// Monotonic milliseconds since an arbitrary, fixed origin.
+    fn now_ms(&self) -> u64;
+}
+
+/// Production [`Clock`] backed by a monotonic [`std::time::Instant`] captured at construction.
+pub struct RealClock {
+    origin: std::time::Instant,
+}
+
+impl RealClock {
+    pub fn new() -> Self {
+        Self {
+            origin: std::time::Instant::now(),
+        }
+    }
+}
+
+impl Default for RealClock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Clock for RealClock {
+    fn now_ms(&self) -> u64 {
+        self.origin.elapsed().as_millis() as u64
+    }
+}
