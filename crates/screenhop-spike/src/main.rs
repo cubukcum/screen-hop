@@ -105,6 +105,9 @@ fn cmd_set(driver: &mut DdcHiDriver) {
         println!("bad hex value");
         return;
     };
+    println!("   NOTE: this is the raw M0 spike — it writes the value you typed with NO soft-brick");
+    println!("         guard (no confirmed-set / blocked-value check). That is intentional for");
+    println!("         hardware probing; the real agent only ever writes self-calibrated values.");
     if !confirm(&format!(
         "Set monitor #{i} input to 0x{value:02X}? This changes what it displays."
     )) {
