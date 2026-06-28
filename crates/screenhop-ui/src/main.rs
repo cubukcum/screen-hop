@@ -41,22 +41,37 @@ fn main() -> Result<(), slint::PlatformError> {
 
     if let Some(path) = arg_value(&args, "--shot") {
         app.set_dev_chrome(false);
+        // Settle delay before snapshotting (lets fonts/layout/animations land). Override with
+        // `--delay <ms>` for slower machines / heavier surfaces.
+        let delay_ms = arg_value(&args, "--delay")
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(600);
         let weak = app.as_weak();
-        slint::Timer::single_shot(std::time::Duration::from_millis(600), move || {
+        slint::Timer::single_shot(std::time::Duration::from_millis(delay_ms), move || {
             if let Some(app) = weak.upgrade() {
-                match app.window().take_snapshot() {
-                    Ok(buf) => {
-                        if let Err(e) = image::save_buffer(
-                            &path,
-                            buf.as_bytes(),
-                            buf.width(),
-                            buf.height(),
-                            image::ExtendedColorType::Rgba8,
-                        ) {
+                let ok = match app.window().take_snapshot() {
+                    Ok(buf) => match image::save_buffer(
+                        &path,
+                        buf.as_bytes(),
+                        buf.width(),
+                        buf.height(),
+                        image::ExtendedColorType::Rgba8,
+                    ) {
+                        Ok(()) => true,
+                        Err(e) => {
                             eprintln!("save error: {e}");
+                            false
                         }
+                    },
+                    Err(e) => {
+                        eprintln!("snapshot error: {e}");
+                        false
                     }
-                    Err(e) => eprintln!("snapshot error: {e}"),
+                };
+                if !ok {
+                    let _ = slint::quit_event_loop();
+                    // Non-zero exit so CI / design-diff scripts notice a failed render.
+                    std::process::exit(1);
                 }
             }
             let _ = slint::quit_event_loop();
