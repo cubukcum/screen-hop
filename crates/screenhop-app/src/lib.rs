@@ -5,7 +5,7 @@
 pub mod mesh;
 pub mod orchestration;
 
-pub use mesh::{ConnectError, MeshState, Node, Session};
+pub use mesh::{ActuationReport, Actuator, ConnectError, MeshState, Node, Session};
 pub use orchestration::{
     plan_preset, resolve_actuation, would_go_blind, ActuationError, PlannedSwitch, SwitchOp,
     SwitchPlan,

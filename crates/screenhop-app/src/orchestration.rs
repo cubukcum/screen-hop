@@ -28,6 +28,9 @@ pub enum ActuationError {
         monitor_id: MonitorId,
         owner: Option<PeerId>,
     },
+    /// The mesh is partitioned / degraded (peers unreachable). Disruptive ops are paused so a peer
+    /// acting on a stale ownership cache cannot cause a double-write/flap (§8.6 partition guard).
+    Degraded { monitor_id: MonitorId },
 }
 
 /// Decide who actuates a switch of `monitor_id` to `target`.
@@ -35,13 +38,22 @@ pub enum ActuationError {
 /// - `PullToSelf` (default): the **target** actuates (writes its own input value).
 /// - `PushRelease`: the **current owner** actuates (hands the panel away); requires the owner
 ///   to be known and online.
+///
+/// When `degraded` is true (the mesh has lost contact with peers), the switch is refused with
+/// [`ActuationError::Degraded`] rather than acted on against a possibly-stale cache (§8.6).
 pub fn resolve_actuation(
     monitor_id: &str,
     target: &str,
     direction: SwitchDirection,
     ownership: &OwnershipMap,
     online: &HashSet<String>,
+    degraded: bool,
 ) -> Result<SwitchOp, ActuationError> {
+    if degraded {
+        return Err(ActuationError::Degraded {
+            monitor_id: monitor_id.to_owned(),
+        });
+    }
     let actuator = match direction {
         SwitchDirection::PullToSelf => target.to_owned(),
         SwitchDirection::PushRelease => {
@@ -103,16 +115,30 @@ pub struct PlannedSwitch {
 pub struct SwitchPlan {
     pub ops: Vec<PlannedSwitch>,
     pub blinds_operator: bool,
+    /// True when the mesh is partitioned/degraded: `ops` is empty and the caller must not actuate.
+    pub degraded: bool,
 }
 
 /// Plan a preset for operator `me`: order the switches so the operator's own currently-visible
 /// panels are handed away **last** (§8.7), and flag whether the whole batch would blind them.
+///
+/// When `degraded` is true the plan is empty and `degraded` is set, so a caller that ignores the
+/// flag still does nothing — disruptive ops pause during a partition (§8.6).
 pub fn plan_preset(
     me: &str,
     assignments: &[(MonitorId, PeerId)],
     ownership: &OwnershipMap,
     all_monitors: &[MonitorId],
+    degraded: bool,
 ) -> SwitchPlan {
+    if degraded {
+        return SwitchPlan {
+            ops: Vec::new(),
+            blinds_operator: false,
+            degraded: true,
+        };
+    }
+
     let mut ordered = assignments.to_vec();
     // Stable sort: monitors currently owned by `me` (key 1) move after the rest (key 0).
     ordered.sort_by_key(|(m, _)| u8::from(ownership.owner(m) == Some(me)));
@@ -123,6 +149,7 @@ pub fn plan_preset(
             .map(|(monitor_id, target)| PlannedSwitch { monitor_id, target })
             .collect(),
         blinds_operator: would_go_blind(me, assignments, ownership, all_monitors),
+        degraded: false,
     }
 }
 
@@ -153,7 +180,7 @@ mod tests {
     #[test]
     fn pull_to_self_actuator_is_the_target() {
         let own = ownership(&[("m1", "A")]);
-        let op = resolve_actuation("m1", "B", SwitchDirection::PullToSelf, &own, &online(&["A", "B"])).unwrap();
+        let op = resolve_actuation("m1", "B", SwitchDirection::PullToSelf, &own, &online(&["A", "B"]), false).unwrap();
         assert_eq!(op.actuator, "B");
         assert_eq!(op.target, "B");
     }
@@ -161,7 +188,7 @@ mod tests {
     #[test]
     fn pull_to_self_with_offline_target_is_stranded() {
         let own = ownership(&[("m1", "A")]);
-        let r = resolve_actuation("m1", "B", SwitchDirection::PullToSelf, &own, &online(&["A"]));
+        let r = resolve_actuation("m1", "B", SwitchDirection::PullToSelf, &own, &online(&["A"]), false);
         assert_eq!(
             r,
             Err(ActuationError::Stranded { monitor_id: "m1".into(), owner: Some("B".into()) })
@@ -171,7 +198,7 @@ mod tests {
     #[test]
     fn push_release_actuator_is_the_current_owner() {
         let own = ownership(&[("m1", "A")]);
-        let op = resolve_actuation("m1", "B", SwitchDirection::PushRelease, &own, &online(&["A", "B"])).unwrap();
+        let op = resolve_actuation("m1", "B", SwitchDirection::PushRelease, &own, &online(&["A", "B"]), false).unwrap();
         assert_eq!(op.actuator, "A");
     }
 
@@ -179,14 +206,29 @@ mod tests {
     fn push_release_strands_when_owner_offline_or_unknown() {
         let own = ownership(&[("m1", "A")]);
         assert!(matches!(
-            resolve_actuation("m1", "B", SwitchDirection::PushRelease, &own, &online(&["B"])),
+            resolve_actuation("m1", "B", SwitchDirection::PushRelease, &own, &online(&["B"]), false),
             Err(ActuationError::Stranded { .. })
         ));
         let empty = OwnershipMap::new();
         assert_eq!(
-            resolve_actuation("m1", "B", SwitchDirection::PushRelease, &empty, &online(&["A", "B"])),
+            resolve_actuation("m1", "B", SwitchDirection::PushRelease, &empty, &online(&["A", "B"]), false),
             Err(ActuationError::Stranded { monitor_id: "m1".into(), owner: None })
         );
+    }
+
+    #[test]
+    fn degraded_mesh_refuses_switches_and_empties_presets() {
+        let own = ownership(&[("m1", "A"), ("m2", "A")]);
+        let all = mons(&["m1", "m2"]);
+        // A single switch is refused outright when the mesh is partitioned.
+        assert_eq!(
+            resolve_actuation("m1", "B", SwitchDirection::PullToSelf, &own, &online(&["A", "B"]), true),
+            Err(ActuationError::Degraded { monitor_id: "m1".into() })
+        );
+        // A preset produces no ops while degraded, so a caller ignoring the flag still does nothing.
+        let plan = plan_preset("A", &assign(&[("m1", "B"), ("m2", "B")]), &own, &all, true);
+        assert!(plan.degraded);
+        assert!(plan.ops.is_empty());
     }
 
     #[test]
@@ -209,7 +251,7 @@ mod tests {
         let own = ownership(&[("m1", "B"), ("m2", "A")]);
         let all = mons(&["m1", "m2"]);
         // Operator A's own panel (m2) is listed FIRST but must be scheduled LAST.
-        let plan = plan_preset("A", &assign(&[("m2", "B"), ("m1", "A")]), &own, &all);
+        let plan = plan_preset("A", &assign(&[("m2", "B"), ("m1", "A")]), &own, &all, false);
         assert_eq!(plan.ops.last().unwrap().monitor_id, "m2");
         assert!(!plan.blinds_operator); // ends owning m1
     }
@@ -218,7 +260,7 @@ mod tests {
     fn whole_desk_handoff_flags_blind() {
         let own = ownership(&[("m1", "A"), ("m2", "A")]);
         let all = mons(&["m1", "m2"]);
-        let plan = plan_preset("A", &assign(&[("m1", "B"), ("m2", "B")]), &own, &all);
+        let plan = plan_preset("A", &assign(&[("m1", "B"), ("m2", "B")]), &own, &all, false);
         assert!(plan.blinds_operator);
     }
 }
