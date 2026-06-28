@@ -1,7 +1,7 @@
 import { Theme } from "theme.slint";
 import { TrayFlyout, MonitorRow } from "tray_flyout.slint";
 import { OnboardingWizard } from "onboarding.slint";
-import { BlindDialog, StrandedDialog, DdcDialog, PartialDialog } from "dialogs.slint";
+import { BlindDialog, StrandedDialog, DdcDialog, PartialDialog, SwitchingDialog, DegradedDialog } from "dialogs.slint";
 import { DeskMap } from "deskmap.slint";
 import { Settings } from "settings.slint";
 
@@ -17,13 +17,31 @@ export component AppWindow inherits Window {
     in-out property <int> screen: 1;   // 0 = flyout, 1 = wizard, 2 = dialog
     in-out property <bool> dev-chrome: true;   // hidden in snapshot mode
     in-out property <int> wizard-step: 1;      // which onboarding step to show
-    in-out property <int> dialog: 1;           // 1 blind · 2 stranded · 3 ddc · 4 partial
+    in-out property <int> dialog: 1;           // 1 blind · 2 stranded · 3 ddc · 4 partial · 5 switching · 6 degraded
+    in-out property <int> switching-state: 0;  // SwitchingDialog state for the preview
 
     in-out property <[MonitorRow]> monitors: [
-        { name: "Left 27\"", spec: "DP-1 · 1440p", active: 0 },
-        { name: "Center 32\"", spec: "HDMI-2 · 4K", active: 1 },
-        { name: "Right 27\"", spec: "DP-2 · 1440p", active: 0 },
+        { name: "Left 27\"", spec: "DP-1 · 1440p", active: 0, switching: false },
+        { name: "Center 32\"", spec: "HDMI-2 · 4K", active: 1, switching: false },
+        { name: "Right 27\"", spec: "DP-2 · 1440p", active: 0, switching: false },
     ];
+
+    // Simulates the honest async switch in the dev preview: a click puts the row in `switching`,
+    // and the owner flips only when this "settle" fires — never optimistically on click (§6.1).
+    property <int> pending-mon: -1;
+    property <int> pending-peer: -1;
+    settle := Timer {
+        interval: 1400ms;
+        running: false;
+        triggered => {
+            if (root.pending-mon >= 0) {
+                root.monitors[root.pending-mon].active = root.pending-peer;
+                root.monitors[root.pending-mon].switching = false;
+                root.pending-mon = -1;
+            }
+            self.running = false;
+        }
+    }
 
     VerticalLayout {
         padding: 18px;
@@ -64,7 +82,16 @@ export component AppWindow inherits Window {
                 { name: "Couch", active: false },
             ];
             toggle-theme => { Theme.dark = !Theme.dark; }
-            switch(mi, pi) => { root.monitors[mi].active = pi; }
+            // Honest flow: enter the in-flight state now; the owner flips when `settle` confirms.
+            switch(mi, pi) => {
+                if (mi != root.pending-mon) {
+                    root.monitors[mi].switching = true;
+                    root.pending-mon = mi;
+                    root.pending-peer = pi;
+                    settle.running = true;
+                }
+            }
+            apply-preset(pi) => { }
         }
 
         if screen == 1: OnboardingWizard {
@@ -76,6 +103,8 @@ export component AppWindow inherits Window {
         if screen == 2 && dialog == 2: StrandedDialog { }
         if screen == 2 && dialog == 3: DdcDialog { }
         if screen == 2 && dialog == 4: PartialDialog { }
+        if screen == 2 && dialog == 5: SwitchingDialog { state: root.switching-state; }
+        if screen == 2 && dialog == 6: DegradedDialog { }
 
         if screen == 3: DeskMap { }
         if screen == 4: Settings { }

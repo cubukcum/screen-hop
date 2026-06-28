@@ -198,6 +198,103 @@ export component DdcDialog inherits DialogCard {
     }
 }
 
+// Switching progress (§6.1). `state`: 0 = switching (in flight), 1 = assumed-success / read-back
+// inconclusive (flagged, NOT a failure), 2 = failed after the retry budget. The owner change is
+// shown only once verified — the UI never claims instant success.
+export component SwitchingDialog inherits DialogCard {
+    in property <int> state: 0;   // 0 switching · 1 assumed-success-flagged · 2 failed
+    dwidth: 410;
+    VerticalLayout {
+        HorizontalLayout {
+            padding-left: 22px; padding-right: 22px; padding-top: 20px; padding-bottom: 6px; spacing: 14px;
+            Badge {
+                bg: state == 2 ? Theme.danger-bg : state == 1 ? Theme.warn-bg : Theme.accent-soft;
+                fg: state == 2 ? Theme.danger : state == 1 ? Theme.warn-accent : Theme.accent-text;
+                icon: state == 2 ? Glyph.close : state == 1 ? Glyph.alert : Glyph.power;
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Text {
+                    text: state == 2 ? "Switch failed" : state == 1 ? "Switched (couldn't confirm)" : "Switching Right 27\" → Gaming";
+                    color: Theme.text; font-size: 16px; font-weight: 600;
+                }
+                Text {
+                    text: state == 2 ? "No response after several tries." : state == 1 ? "The panel stopped reporting back." : "Sending the input-source command… ~2s";
+                    color: Theme.text2; font-size: 12px;
+                }
+            }
+        }
+        VerticalLayout {
+            padding-left: 22px; padding-right: 22px; padding-top: 8px; spacing: 11px;
+            // Determinate-looking progress bar; the real app drives `fill` from the state machine.
+            Rectangle {
+                height: 6px; border-radius: 3px; background: Theme.subtle;
+                HorizontalLayout {
+                    alignment: start;
+                    Rectangle {
+                        width: state == 0 ? parent.width * 55% : parent.width;
+                        border-radius: 3px;
+                        background: state == 2 ? Theme.danger : state == 1 ? Theme.warn-accent : Theme.accent;
+                        animate width { duration: 220ms; }
+                    }
+                }
+            }
+            Text {
+                text: state == 2
+                    ? "DDC/CI switching isn't instant or guaranteed on every panel. Try again, or use the monitor's input button."
+                    : state == 1
+                    ? "The write went through but read-back was inconclusive — treated as success, flagged. Some panels don't report their input reliably."
+                    : "Switching takes a moment and may retry. This window updates when the monitor confirms.";
+                color: Theme.text3; font-size: 11.5px; wrap: word-wrap;
+            }
+        }
+        HorizontalLayout {
+            padding-left: 22px; padding-right: 22px; padding-top: 16px; padding-bottom: 20px; spacing: 9px;
+            Rectangle { horizontal-stretch: 1; }
+            if state == 0 : DBtn { label: "Cancel"; kind: 0; }
+            if state == 2 : DBtn { label: "Retry"; kind: 1; }
+            if state != 0 && state != 2 : DBtn { label: "OK"; kind: 1; }
+            if state == 2 : DBtn { label: "Dismiss"; kind: 0; }
+        }
+    }
+}
+
+// Partition / degraded (§8.6). Some peers are unreachable, so disruptive ops are paused to avoid a
+// double-write/flap against a stale ownership cache.
+export component DegradedDialog inherits DialogCard {
+    VerticalLayout {
+        HorizontalLayout {
+            padding-left: 22px; padding-right: 22px; padding-top: 20px; padding-bottom: 6px; spacing: 14px;
+            Badge { bg: Theme.warn-bg; fg: Theme.warn-accent; icon: Glyph.alert; }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Text { text: "Mesh degraded — peers unreachable"; color: Theme.text; font-size: 16px; font-weight: 600; }
+                Text { text: "Switching is paused until the mesh reconnects."; color: Theme.text2; font-size: 12px; }
+            }
+        }
+        VerticalLayout {
+            padding-left: 22px; padding-right: 22px; padding-top: 6px; spacing: 11px;
+            Text { text: "screen-hop lost contact with one or more PCs. Acting on a stale view of who owns each monitor could double-switch a panel, so disruptive actions are held until the peers are back."; color: Theme.text2; font-size: 12.5px; wrap: word-wrap; }
+            Rectangle {
+                border-radius: 7px; background: Theme.warn-bg; border-width: 1px; border-color: Theme.warn-stroke;
+                HorizontalLayout {
+                    padding-left: 11px; padding-right: 11px; padding-top: 9px; padding-bottom: 9px; spacing: 9px;
+                    VerticalLayout { StrokeIcon { width: 15px; height: 15px; tint: Theme.warn-accent; commands: Glyph.alert; } }
+                    Text { text: "Once every PC is back online, the live monitor inputs are re-read and ownership is corrected automatically."; color: Theme.warn-text; font-size: 12px; wrap: word-wrap; }
+                }
+            }
+        }
+        HorizontalLayout {
+            padding-left: 22px; padding-right: 22px; padding-top: 18px; padding-bottom: 20px; spacing: 9px;
+            Rectangle { horizontal-stretch: 1; }
+            DBtn { label: "Retry now"; kind: 0; }
+            DBtn { label: "Got it"; kind: 1; }
+        }
+    }
+}
+
 export component PartialDialog inherits DialogCard {
     dwidth: 440;
     VerticalLayout {

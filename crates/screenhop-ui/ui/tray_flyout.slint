@@ -9,6 +9,7 @@ export struct MonitorRow {
     name: string,
     spec: string,
     active: int,   // index into `peers` = the PC currently driving this monitor
+    switching: bool,   // a 0x60 write is in flight — show progress, do NOT fake the new owner yet
 }
 
 export struct Preset {
@@ -23,6 +24,8 @@ export component TrayFlyout inherits Rectangle {
     in property <[Peer]> peers;
     in property <[Preset]> presets;
     in property <int> online-count: 3;
+    in property <bool> degraded: false;   // mesh partitioned — disruptive controls are paused
+    in-out property <int> selected-preset: 0;   // highlighted preset (click feedback)
     callback toggle-theme();
     callback switch(int, int);    // (monitor-index, peer-index)
     callback apply-preset(int);
@@ -71,19 +74,19 @@ export component TrayFlyout inherits Rectangle {
 
             Rectangle { horizontal-stretch: 1; }
 
-            Rectangle {   // "N online" status pill
+            Rectangle {   // status pill — amber "Degraded" when the mesh is partitioned (§8.6)
                 height: 22px;
                 border-radius: 11px;
-                background: Theme.accent-soft;
+                background: degraded ? Theme.warn-bg : Theme.accent-soft;
                 HorizontalLayout {
                     padding-left: 9px;
                     padding-right: 10px;
                     spacing: 6px;
                     VerticalLayout {   // wrap so the dot centers on the cross axis
                         alignment: center;
-                        Rectangle { width: 6px; height: 6px; border-radius: 3px; background: Theme.ok-dot; }
+                        Rectangle { width: 6px; height: 6px; border-radius: 3px; background: degraded ? Theme.warn-accent : Theme.ok-dot; }
                     }
-                    Text { text: "\{online-count} online"; color: Theme.accent-text; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
+                    Text { text: degraded ? "Degraded" : "\{online-count} online"; color: degraded ? Theme.warn-text : Theme.accent-text; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
                 }
             }
         }
@@ -108,7 +111,28 @@ export component TrayFlyout inherits Rectangle {
                         Text { text: m.spec; color: Theme.text3; font-size: 11px; overflow: elide; }
                     }
 
-                    Rectangle {   // segmented control
+                    // In-flight: a 0x60 write takes ~1–3s and can retry — show progress, never a
+                    // faked instant owner change. Production flips `active` only on a verified
+                    // read-back; until then the row sits in this `switching` state.
+                    if m.switching : Rectangle {
+                        height: 30px;
+                        border-radius: 8px;
+                        background: Theme.warn-bg;
+                        border-width: 1px;
+                        border-color: Theme.warn-stroke;
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            spacing: 7px;
+                            alignment: center;
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle { width: 7px; height: 7px; border-radius: 3.5px; background: Theme.warn-accent; }
+                            }
+                            Text { text: "Switching… ~2s"; color: Theme.warn-text; font-size: 12px; font-weight: 600; vertical-alignment: center; }
+                        }
+                    }
+                    if !m.switching : Rectangle {   // segmented control
                         height: 30px;
                         border-radius: 8px;
                         background: Theme.subtle;
@@ -122,7 +146,7 @@ export component TrayFlyout inherits Rectangle {
                                 border-radius: 6px;
                                 background: pi == m.active ? p.color : (seg.has-hover ? Theme.stroke : transparent);
                                 animate background { duration: 110ms; }
-                                seg := TouchArea { clicked => { root.switch(mi, pi); } }
+                                seg := TouchArea { clicked => { if !root.degraded { root.switch(mi, pi); } } }
                                 Text {
                                     text: p.label;
                                     color: pi == m.active ? #ffffff : Theme.text2;
@@ -157,13 +181,13 @@ export component TrayFlyout inherits Rectangle {
                 height: 28px;
                 width: ptxt.preferred-width + 20px;
                 border-radius: 8px;
-                background: p.active ? Theme.accent-soft : Theme.layer;
+                background: pi == root.selected-preset ? Theme.accent-soft : Theme.layer;
                 border-width: 1px;
-                border-color: p.active ? Theme.accent-soft-stroke : Theme.ctl-stroke;
-                TouchArea { clicked => { root.apply-preset(pi); } }
+                border-color: pi == root.selected-preset ? Theme.accent-soft-stroke : Theme.ctl-stroke;
+                TouchArea { clicked => { if !root.degraded { root.selected-preset = pi; root.apply-preset(pi); } } }
                 ptxt := Text {
                     text: p.name;
-                    color: p.active ? Theme.accent-text : Theme.text;
+                    color: pi == root.selected-preset ? Theme.accent-text : Theme.text;
                     font-size: 12.5px;
                     font-weight: 600;
                     horizontal-alignment: center;
