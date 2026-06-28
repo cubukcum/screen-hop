@@ -101,13 +101,31 @@ impl MonitorDriver for DdcHiDriver {
         let Some(idx) = self.index_of(monitor_id) else {
             return DdcWriteResult::Failed;
         };
+        // VCP values are 16-bit on the wire; a value that doesn't fit is not a valid input code, so
+        // refuse it rather than silently truncating (which could write a *different* input).
+        let Ok(value16) = u16::try_from(value) else {
+            return DdcWriteResult::Unsupported;
+        };
         match self.displays[idx]
             .handle
-            .set_vcp_feature(VCP_INPUT_SELECT, value as u16)
+            .set_vcp_feature(VCP_INPUT_SELECT, value16)
         {
             Ok(()) => DdcWriteResult::Ok,
-            Err(_) => DdcWriteResult::Failed,
+            Err(e) => classify_write_error(&e),
         }
+    }
+}
+
+/// ddc-hi doesn't type-distinguish "feature/value unsupported" from a transient failure, so we
+/// best-effort sniff the error text: an "unsupported" error is permanent (the executor must NOT
+/// retry and should try a fallback path), anything else is treated as a retryable failure. Generic
+/// over the error type (ddc-hi's error type is not publicly nameable) — its `Debug` form suffices.
+fn classify_write_error<E: std::fmt::Debug>(err: &E) -> DdcWriteResult {
+    let msg = format!("{err:?}").to_ascii_lowercase();
+    if msg.contains("unsupported") || msg.contains("not supported") {
+        DdcWriteResult::Unsupported
+    } else {
+        DdcWriteResult::Failed
     }
 }
 
