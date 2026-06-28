@@ -5,8 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-slint = "1"
-image = { version = "0.25", default-features = false, features = ["png"] }
+slint = { workspace = true }
+image = { workspace = true }
 
 [build-dependencies]
-slint-build = "1"
+slint-build = { workspace = true }

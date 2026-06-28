@@ -1,0 +1,18 @@
+{
+  "_comment": "Shipped panel-global quirks DB (decisions D4/D7). Keyed by monitor_id or model token. These facts are panel-GLOBAL and replicate across the mesh; they can only RESTRICT behavior (blocked values, timing, direction hints) and can NEVER authorize a 0x60 write — only a peer's own self-calibrated value may be written. Community PRs add panel-global facts here.",
+  "SAM-U32H750": {
+    "readback_unreliable": false,
+    "settle_ms": 2000,
+    "blocked_input_values": [],
+    "source": "shipped"
+  },
+  "DEL-USB-C-DOCK": {
+    "requires_active_input": true,
+    "settle_ms": 2500,
+    "source": "shipped"
+  },
+  "DDC-OFF-BY-DEFAULT-SAMPLE": {
+    "ddc_off_by_default": true,
+    "source": "shipped"
+  }
+}

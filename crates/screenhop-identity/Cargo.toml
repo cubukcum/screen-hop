@@ -5,4 +5,4 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-sha2 = "0.10"
+sha2 = { workspace = true }

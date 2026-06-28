@@ -6,6 +6,7 @@ members = [
     "crates/screenhop-ddc",
     "crates/screenhop-identity",
     "crates/screenhop-net",
+    "crates/screenhop-quirks",
     "crates/screenhop-state",
     "crates/screenhop-ui",
     "crates/screenhop-spike",
@@ -15,4 +16,22 @@ members = [
 edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/screen-hop/screen-hop"
-rust-version = "1.80"
+# MSRV: raised to 1.82 — the codebase uses `Option::is_none_or` (stabilized in 1.82). CI's
+# build-on-MSRV job must use this toolchain.
+rust-version = "1.82"
+
+# Centralized versions for third-party deps so security-sensitive crates (crypto, DDC) are pinned
+# in one place rather than ad-hoc per crate. Crates opt in via `dep = { workspace = true }`.
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+zeroize = "1"
+chacha20poly1305 = "0.10"
+argon2 = "0.5"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+ddc-hi = "0.4"
+slint = "1"
+slint-build = "1"
+image = { version = "0.25", default-features = false, features = ["png"] }
