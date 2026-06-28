@@ -11,5 +11,5 @@ pub mod collision;
 pub mod fingerprint;
 
 pub use calibration::CalibrationStore;
-pub use collision::{collisions_needing_labels, group_by_id};
+pub use collision::{collisions_needing_labels, group_by_id, EnumeratedPanel};
 pub use fingerprint::{EdidError, MonitorFingerprint};
