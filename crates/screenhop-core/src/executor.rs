@@ -1,4 +1,4 @@
-use crate::driver::{Delayer, MonitorDriver};
+use crate::driver::{Clock, Delayer, MonitorDriver};
 use crate::types::{
     ActuationPolicy, DdcWriteResult, SwitchOutcome, SwitchRequest, SwitchResult,
 };
@@ -15,14 +15,25 @@ pub const VCP_INPUT_SELECT: u8 = 0x60;
 ///
 /// Direction selection and value resolution happen upstream (orchestrator, M4); this
 /// type owns the defensive write/verify loop and the soft-brick guarantees.
-pub struct SwitchExecutor<D: MonitorDriver, L: Delayer> {
+///
+/// The loop is bounded by both `policy.max_attempts` AND a wall-clock hard ceiling
+/// (`policy.ceiling_ms`, D5/§6.3) measured against the injected [`Clock`], so a switch provably
+/// terminates before the lease TTL. Note: the ceiling bounds time *between* driver calls; a driver
+/// whose individual `write_input`/`try_read_input` can block (e.g. a DisplayPort push-release hang)
+/// must additionally carry its own per-call timeout — the ceiling cannot interrupt a blocked syscall.
+pub struct SwitchExecutor<D: MonitorDriver, L: Delayer, C: Clock> {
     driver: D,
     delayer: L,
+    clock: C,
 }
 
-impl<D: MonitorDriver, L: Delayer> SwitchExecutor<D, L> {
-    pub fn new(driver: D, delayer: L) -> Self {
-        Self { driver, delayer }
+impl<D: MonitorDriver, L: Delayer, C: Clock> SwitchExecutor<D, L, C> {
+    pub fn new(driver: D, delayer: L, clock: C) -> Self {
+        Self {
+            driver,
+            delayer,
+            clock,
+        }
     }
 
     /// Access to the underlying driver (e.g. for calibration reads).
@@ -59,9 +70,23 @@ impl<D: MonitorDriver, L: Delayer> SwitchExecutor<D, L> {
             );
         }
 
-        // 3. Write / settle / verify with retries.
+        // 3. Write / settle / verify with retries, bounded by both attempt count and the
+        //    per-monitor hard ceiling (D5/§6.3).
+        let started_ms = self.clock.now_ms();
+        let deadline_ms = started_ms.saturating_add(u64::from(policy.ceiling_ms));
         let mut attempts = 0u32;
         for i in 0..policy.max_attempts {
+            if self.clock.now_ms() >= deadline_ms {
+                return SwitchResult {
+                    outcome: SwitchOutcome::Failed,
+                    attempts,
+                    observed_value: None,
+                    detail: Some(format!(
+                        "Hard ceiling of {} ms reached after {attempts} attempt(s).",
+                        policy.ceiling_ms
+                    )),
+                };
+            }
             attempts += 1;
 
             match self.driver.write_input(&request.monitor_id, request.input_value) {
@@ -77,14 +102,14 @@ impl<D: MonitorDriver, L: Delayer> SwitchExecutor<D, L> {
                     };
                 }
                 DdcWriteResult::Failed => {
-                    self.backoff(policy, i);
+                    self.backoff(policy, i, deadline_ms);
                     continue;
                 }
                 DdcWriteResult::Ok => {}
             }
 
-            // Write accepted — let the panel settle before verifying.
-            self.delayer.delay(policy.settle_ms);
+            // Write accepted — let the panel settle before verifying (never sleeping past the ceiling).
+            self.delay_clamped(policy.settle_ms, deadline_ms);
 
             if !policy.readback_reliable {
                 return SwitchResult {
@@ -108,7 +133,7 @@ impl<D: MonitorDriver, L: Delayer> SwitchExecutor<D, L> {
                 }
                 Some(_) => {
                     // Confirmed-wrong: the write didn't take. Retry.
-                    self.backoff(policy, i);
+                    self.backoff(policy, i, deadline_ms);
                     continue;
                 }
                 None => {
@@ -132,9 +157,20 @@ impl<D: MonitorDriver, L: Delayer> SwitchExecutor<D, L> {
         }
     }
 
-    fn backoff(&self, policy: &ActuationPolicy, attempt_index: u32) {
+    fn backoff(&self, policy: &ActuationPolicy, attempt_index: u32, deadline_ms: u64) {
         if policy.backoff_ms > 0 {
-            self.delayer.delay(policy.backoff_ms * (attempt_index + 1));
+            // Linear backoff, overflow-safe (a large backoff_ms × attempt would otherwise wrap/panic).
+            let wait = policy.backoff_ms.saturating_mul(attempt_index.saturating_add(1));
+            self.delay_clamped(wait, deadline_ms);
+        }
+    }
+
+    /// Delay `ms`, but never sleep past the hard ceiling `deadline_ms`.
+    fn delay_clamped(&self, ms: u32, deadline_ms: u64) {
+        let remaining = deadline_ms.saturating_sub(self.clock.now_ms());
+        let capped = u64::from(ms).min(remaining);
+        if capped > 0 {
+            self.delayer.delay(capped.try_into().unwrap_or(u32::MAX));
         }
     }
 }
@@ -151,8 +187,10 @@ fn refusal(outcome: SwitchOutcome, detail: &str) -> SwitchResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::driver::Delayer;
+    use crate::driver::{Clock, Delayer};
+    use std::cell::Cell;
     use std::collections::VecDeque;
+    use std::rc::Rc;
 
     const MON: &str = "MON#0";
     const TARGET: u32 = 0x0F; // DisplayPort-1
@@ -160,6 +198,29 @@ mod tests {
     struct NoDelay;
     impl Delayer for NoDelay {
         fn delay(&self, _ms: u32) {}
+    }
+
+    /// Clock that never advances — fine for tests that don't exercise the ceiling.
+    struct ZeroClock;
+    impl Clock for ZeroClock {
+        fn now_ms(&self) -> u64 {
+            0
+        }
+    }
+
+    /// A monotonic test clock plus a delayer that advances it, so the hard ceiling is exercised
+    /// deterministically without real sleeps.
+    #[derive(Clone, Default)]
+    struct TestClock(Rc<Cell<u64>>);
+    impl Clock for TestClock {
+        fn now_ms(&self) -> u64 {
+            self.0.get()
+        }
+    }
+    impl Delayer for TestClock {
+        fn delay(&self, ms: u32) {
+            self.0.set(self.0.get() + u64::from(ms));
+        }
     }
 
     struct Fake {
@@ -232,8 +293,8 @@ mod tests {
     }
     use crate::types::SwitchDirection;
 
-    fn exec(fake: Fake) -> SwitchExecutor<Fake, NoDelay> {
-        SwitchExecutor::new(fake, NoDelay)
+    fn exec(fake: Fake) -> SwitchExecutor<Fake, NoDelay, ZeroClock> {
+        SwitchExecutor::new(fake, NoDelay, ZeroClock)
     }
 
     #[test]
@@ -322,5 +383,30 @@ mod tests {
         assert_eq!(r.outcome, SwitchOutcome::Failed);
         assert_eq!(r.attempts, 3);
         assert_eq!(e.driver_mut().write_calls, 3);
+    }
+
+    #[test]
+    fn aborts_on_hard_ceiling_before_exhausting_attempts() {
+        // A panel that keeps mis-reporting + a generous attempt budget, but a 2.5s ceiling and a
+        // settle of 1s per attempt: the loop must abort on the ceiling, NOT run all 1000 attempts.
+        let mut fake = Fake::new();
+        fake.current = 0x11;
+        fake.apply_write = false;
+        let clock = TestClock::default();
+        let mut e = SwitchExecutor::new(fake, clock.clone(), clock);
+        let mut p = ActuationPolicy::new([TARGET], []);
+        p.max_attempts = 1000;
+        p.settle_ms = 1000;
+        p.backoff_ms = 0;
+        p.ceiling_ms = 2500;
+        let r = e.execute(&req(), &p);
+        assert_eq!(r.outcome, SwitchOutcome::Failed);
+        assert!(
+            r.detail.as_deref().unwrap_or("").contains("ceiling"),
+            "expected ceiling detail, got {:?}",
+            r.detail
+        );
+        // ~3 attempts fit before 2.5s elapses (settle 1s each), far short of max_attempts.
+        assert!(r.attempts <= 4, "attempts should be ceiling-bounded, got {}", r.attempts);
     }
 }

@@ -69,6 +69,10 @@ pub struct ActuationPolicy {
     pub settle_ms: u32,
     /// Base backoff between retries (multiplied by attempt number).
     pub backoff_ms: u32,
+    /// Per-monitor switch hard ceiling in milliseconds (D5/§6.3). The actuation loop aborts once
+    /// this elapses, regardless of `max_attempts`, so a switch provably terminates before the lease
+    /// TTL — the invariant the double-actuation guard rests on (`lease_TTL > ceiling + margin`).
+    pub ceiling_ms: u32,
     /// When false (panel quirk), skip read-back and report assumed-success after a good write.
     pub readback_reliable: bool,
 }
@@ -84,6 +88,7 @@ impl ActuationPolicy {
             max_attempts: 3,
             settle_ms: 1500,
             backoff_ms: 400,
+            ceiling_ms: 15_000,
             readback_reliable: true,
         }
     }
@@ -93,6 +98,8 @@ impl ActuationPolicy {
 #[derive(Debug, Clone)]
 pub struct SwitchResult {
     pub outcome: SwitchOutcome,
+    /// Number of `0x60` **write** attempts issued. Pre-write refusals (blocked/unconfirmed value,
+    /// DDC unavailable) report `0` because no write was attempted.
     pub attempts: u32,
     pub observed_value: Option<u32>,
     pub detail: Option<String>,
