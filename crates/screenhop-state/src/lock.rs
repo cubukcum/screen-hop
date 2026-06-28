@@ -1,15 +1,41 @@
 use std::collections::HashMap;
 
-/// Default lease length. Per **D5** this must exceed the per-monitor switch hard-ceiling (15 s)
-/// plus margin, so a lease cannot expire mid-switch and admit a second actuator. The holder
-/// renews before entering a known-slow push-release.
+/// Per-monitor switch hard ceiling (D5/§6.3) — mirrors `ActuationPolicy::ceiling_ms` in
+/// screenhop-core. A switch is guaranteed to terminate within this budget.
+pub const SWITCH_CEILING_MS: u64 = 15_000;
+
+/// Safety margin so a lease cannot expire mid-switch even with scheduling/clock jitter and the
+/// renew-before-push-release step.
+pub const LEASE_MARGIN_MS: u64 = 5_000;
+
+/// The smallest lease any `acquire`/`renew` will issue. This turns the D5 invariant
+/// (`lease_TTL > switch_ceiling + margin`) into a *code-enforced* floor rather than prose: a caller
+/// (or a bug, or a hostile-but-paired peer) cannot obtain a sub-ceiling lease that expires
+/// mid-switch and admits a second actuator.
+pub const MIN_LEASE_MS: u64 = SWITCH_CEILING_MS + LEASE_MARGIN_MS;
+
+/// Default lease length. Per **D5** this exceeds the per-monitor switch hard-ceiling plus margin,
+/// so a lease cannot expire mid-switch and admit a second actuator. The holder renews before
+/// entering a known-slow push-release.
 pub const DEFAULT_LEASE_MS: u64 = 30_000;
+
+// Compile-time guard for the D5 invariant: the default lease must clear the floor.
+const _: () = assert!(
+    DEFAULT_LEASE_MS >= MIN_LEASE_MS,
+    "D5: lease TTL must exceed switch ceiling + margin"
+);
 
 /// A granted per-monitor lease.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Lease {
     pub holder: String,
+    /// Absolute expiry **in the granter's clock domain**. Only the granter should evaluate this —
+    /// it is meaningless to a peer with a different monotonic origin.
     pub expires_ms: u64,
+    /// The granted duration (relative ms). Ship THIS over the wire (not `expires_ms`); the holder
+    /// anchors it to its own clock at receive time so cross-peer clock skew cannot cause it to
+    /// believe a lease is still valid that the granter considers expired (the D5 mid-switch window).
+    pub granted_ms: u64,
 }
 
 /// Result of an acquire attempt.
@@ -32,8 +58,10 @@ impl LockManager {
     }
 
     /// Acquire (or renew, if already held by `peer`) the lock for `monitor`. Granted when the
-    /// monitor is free, the existing lease has expired, or `peer` already holds it.
+    /// monitor is free, the existing lease has expired, or `peer` already holds it. The requested
+    /// `lease_ms` is raised to at least [`MIN_LEASE_MS`] to preserve the D5 invariant.
     pub fn acquire(&mut self, monitor: &str, peer: &str, now_ms: u64, lease_ms: u64) -> LockOutcome {
+        let lease_ms = lease_ms.max(MIN_LEASE_MS);
         if let Some(l) = self.locks.get(monitor) {
             if l.expires_ms > now_ms && l.holder != peer {
                 return LockOutcome::Denied {
@@ -43,20 +71,23 @@ impl LockManager {
         }
         let lease = Lease {
             holder: peer.to_owned(),
-            expires_ms: now_ms + lease_ms,
+            expires_ms: now_ms.saturating_add(lease_ms),
+            granted_ms: lease_ms,
         };
         self.locks.insert(monitor.to_owned(), lease.clone());
         LockOutcome::Granted(lease)
     }
 
     /// Extend a lease the peer currently and validly holds. `None` if it doesn't hold it (or it
-    /// already expired) — the caller must then re-acquire.
+    /// already expired) — the caller must then re-acquire. `lease_ms` is floored at [`MIN_LEASE_MS`].
     pub fn renew(&mut self, monitor: &str, peer: &str, now_ms: u64, lease_ms: u64) -> Option<Lease> {
+        let lease_ms = lease_ms.max(MIN_LEASE_MS);
         match self.locks.get(monitor) {
             Some(l) if l.holder == peer && l.expires_ms > now_ms => {
                 let lease = Lease {
                     holder: peer.to_owned(),
-                    expires_ms: now_ms + lease_ms,
+                    expires_ms: now_ms.saturating_add(lease_ms),
+                    granted_ms: lease_ms,
                 };
                 self.locks.insert(monitor.to_owned(), lease.clone());
                 Some(lease)
@@ -93,12 +124,20 @@ impl LockManager {
         now_ms: u64,
         lease_ms: u64,
     ) -> Result<(), (String, String)> {
-        let mut acquired: Vec<&str> = Vec::new();
+        // Only roll back locks NEWLY grabbed here. A monitor `peer` already validly held before
+        // this call (an acquire-as-renew) must be left intact — releasing it on failure would drop
+        // a lease the peer legitimately owns and is relying on elsewhere.
+        let mut newly_acquired: Vec<&str> = Vec::new();
         for &m in monitors {
+            let already_held = self.holder(m, now_ms) == Some(peer);
             match self.acquire(m, peer, now_ms, lease_ms) {
-                LockOutcome::Granted(_) => acquired.push(m),
+                LockOutcome::Granted(_) => {
+                    if !already_held {
+                        newly_acquired.push(m);
+                    }
+                }
                 LockOutcome::Denied { current_holder } => {
-                    for a in &acquired {
+                    for a in &newly_acquired {
                         self.release(a, peer);
                     }
                     return Err((m.to_owned(), current_holder));
@@ -192,5 +231,30 @@ mod tests {
         assert!(m.acquire_all(&["mon1", "mon2", "mon3"], "A", 0, LEASE).is_ok());
         assert_eq!(m.holder("mon1", 1), Some("A"));
         assert_eq!(m.holder("mon3", 1), Some("A"));
+    }
+
+    #[test]
+    fn sub_ceiling_lease_is_floored_to_min_lease() {
+        // D5: a tiny requested lease must be raised so it can never expire mid-switch.
+        let mut m = LockManager::new();
+        let LockOutcome::Granted(lease) = m.acquire("mon", "A", 0, 100) else {
+            panic!("expected grant");
+        };
+        assert_eq!(lease.granted_ms, MIN_LEASE_MS);
+        assert_eq!(lease.expires_ms, MIN_LEASE_MS);
+        // Still held well past the switch ceiling (MIN_LEASE_MS > SWITCH_CEILING_MS by construction).
+        assert_eq!(m.holder("mon", SWITCH_CEILING_MS), Some("A"));
+    }
+
+    #[test]
+    fn acquire_all_rollback_preserves_a_prior_same_peer_hold() {
+        // A already holds mon1 from an earlier op; a later preset over [mon1, mon2] fails on mon2
+        // (held by B). The rollback must NOT release A's pre-existing mon1 lease.
+        let mut m = LockManager::new();
+        m.acquire("mon1", "A", 0, LEASE); // A's pre-existing hold
+        m.acquire("mon2", "B", 0, LEASE); // B blocks
+        let err = m.acquire_all(&["mon1", "mon2"], "A", 100, LEASE);
+        assert_eq!(err, Err(("mon2".into(), "B".into())));
+        assert_eq!(m.holder("mon1", 200), Some("A"), "prior hold must survive rollback");
     }
 }

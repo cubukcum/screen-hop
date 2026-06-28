@@ -5,8 +5,10 @@
 pub mod lock;
 pub mod ownership;
 
-pub use lock::{Lease, LockManager, LockOutcome, DEFAULT_LEASE_MS};
-pub use ownership::{OwnershipMap, OwnershipRecord};
+pub use lock::{
+    Lease, LockManager, LockOutcome, DEFAULT_LEASE_MS, MIN_LEASE_MS, SWITCH_CEILING_MS,
+};
+pub use ownership::{OwnershipMap, OwnershipRecord, OwnershipState};
 
 pub type PeerId = String;
 pub type MonitorId = String;
