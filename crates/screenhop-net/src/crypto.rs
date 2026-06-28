@@ -5,11 +5,12 @@
 //! nonces, so nonce reuse is a non-issue). Per-peer monotonically increasing sequence numbers are
 //! filtered through a [`ReplayWindow`].
 
-use argon2::Argon2;
+use argon2::{Algorithm, Argon2, Params, Version};
 use chacha20poly1305::{
     aead::{Aead, AeadCore, KeyInit, OsRng, Payload},
     Key, XChaCha20Poly1305, XNonce,
 };
+use sha2::{Digest, Sha256};
 
 pub const GROUP_KEY_LEN: usize = 32;
 const NONCE_LEN: usize = 24;
@@ -17,24 +18,53 @@ const NONCE_LEN: usize = 24;
 /// so a constant salt is acceptable for deriving the mesh group key.
 const KDF_SALT: &[u8] = b"screen-hop/v1/group-key";
 
-/// Stretch the shared mesh secret into a 32-byte group key with Argon2id.
+/// Argon2id parameters, **pinned explicitly** (not `Argon2::default()`) so the derived group key
+/// is reproducible and does not silently change if the `argon2` crate revises its defaults — which
+/// would split a mesh in two on upgrade. Baseline ≈ OWASP Argon2id: 19 MiB / 2 passes / 1 lane.
+const KDF_MEM_KIB: u32 = 19_456;
+const KDF_ITERS: u32 = 2;
+const KDF_LANES: u32 = 1;
+
+/// Domain-separation label for the AEAD sub-key. The Argon2id output is the master group key (GMK);
+/// the cipher key is a labeled sub-key of it, so the raw GMK is never used directly as the cipher
+/// key and additional sub-keys (e.g. a future per-message auth key, §8.2) derive from distinct
+/// labels without colliding.
+const AEAD_SUBKEY_LABEL: &[u8] = b"screen-hop/v1/aead-key";
+
+fn kdf() -> Argon2<'static> {
+    let params = Params::new(KDF_MEM_KIB, KDF_ITERS, KDF_LANES, Some(GROUP_KEY_LEN))
+        .expect("pinned argon2 params are valid");
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+}
+
+/// Stretch the shared mesh secret into the 32-byte master group key (GMK) with Argon2id.
 pub fn derive_group_key(passphrase: &str) -> [u8; GROUP_KEY_LEN] {
     let mut key = [0u8; GROUP_KEY_LEN];
-    Argon2::default()
+    kdf()
         .hash_password_into(passphrase.as_bytes(), KDF_SALT, &mut key)
-        .expect("argon2id with default params and a valid-length output");
+        .expect("argon2id with pinned params and a valid-length output");
     key
 }
 
-/// Authenticated, encrypted framing for mesh messages, keyed by the shared group key.
+/// Derive the labeled AEAD sub-key from the master group key (domain separation, see
+/// [`AEAD_SUBKEY_LABEL`]).
+fn derive_aead_key(gmk: &[u8; GROUP_KEY_LEN]) -> [u8; GROUP_KEY_LEN] {
+    let mut h = Sha256::new();
+    h.update(AEAD_SUBKEY_LABEL);
+    h.update(gmk);
+    h.finalize().into()
+}
+
+/// Authenticated, encrypted framing for mesh messages, keyed by a sub-key of the shared group key.
 pub struct SecureChannel {
     cipher: XChaCha20Poly1305,
 }
 
 impl SecureChannel {
     pub fn new(group_key: &[u8; GROUP_KEY_LEN]) -> Self {
+        let aead_key = derive_aead_key(group_key);
         Self {
-            cipher: XChaCha20Poly1305::new(Key::from_slice(group_key)),
+            cipher: XChaCha20Poly1305::new(Key::from_slice(&aead_key)),
         }
     }
 

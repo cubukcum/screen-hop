@@ -20,6 +20,12 @@ pub const PROTOCOL_AAD: &[u8] = b"screen-hop/mesh/v1";
 /// buffer while comfortably fitting real traffic.
 const MAX_FRAME_LEN: usize = 64 * 1024;
 
+/// Cap on the number of distinct senders an inbound connection will track replay state for. A
+/// connection legitimately carries one verified peer (the mesh layer binds `env.from` to the
+/// handshake identity), so this is generous; it just stops a group-key holder from growing the
+/// replay map without bound by varying `from`.
+const MAX_TRACKED_SENDERS: usize = 16;
+
 /// Write a `u32` big-endian length prefix followed by `payload`.
 pub fn write_frame<W: Write>(w: &mut W, payload: &[u8]) -> io::Result<()> {
     let len = u32::try_from(payload.len())
@@ -86,7 +92,10 @@ impl<S: Read + Write> SecureConnection<S> {
 
     /// Seal and send `body` as `me`, assigning the next outbound sequence number.
     pub fn send(&mut self, me: &str, body: Message) -> io::Result<()> {
-        self.seq += 1;
+        self.seq = self
+            .seq
+            .checked_add(1)
+            .ok_or_else(|| io::Error::other("outbound sequence space exhausted"))?;
         let env = Envelope {
             from: me.to_owned(),
             seq: self.seq,
@@ -112,6 +121,10 @@ impl<S: Read + Write> SecureConnection<S> {
             .open(&frame, PROTOCOL_AAD)
             .ok_or(RecvError::Decrypt)?;
         let env = Envelope::from_bytes(&plaintext).ok_or(RecvError::Parse)?;
+        // Bound the replay map: refuse to start tracking a new sender past the cap.
+        if !self.replay.contains_key(&env.from) && self.replay.len() >= MAX_TRACKED_SENDERS {
+            return Err(RecvError::Replay);
+        }
         let window = self.replay.entry(env.from.clone()).or_default();
         if !window.accept(env.seq) {
             return Err(RecvError::Replay);
