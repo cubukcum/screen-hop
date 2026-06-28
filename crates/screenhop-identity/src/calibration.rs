@@ -6,9 +6,12 @@ use std::collections::{HashMap, HashSet};
 /// **never** shared with or used by another peer (writing another peer's value could pick the
 /// wrong input or risk a soft-brick). A peer that has never been the active source on a panel
 /// has no value here — the "value unknown until first active" state.
+///
+/// Stored as a nested `peer -> monitor -> value` map so lookups borrow `&str` keys directly,
+/// without allocating an owned `(String, String)` tuple on every read.
 #[derive(Debug, Default, Clone)]
 pub struct CalibrationStore {
-    values: HashMap<(String, String), u32>,
+    values: HashMap<String, HashMap<String, u32>>,
 }
 
 impl CalibrationStore {
@@ -19,13 +22,16 @@ impl CalibrationStore {
     /// Record this peer's own confirmed input value for a monitor (learned while it was active).
     pub fn record(&mut self, peer_id: &str, monitor_id: &str, input_value: u32) {
         self.values
-            .insert((peer_id.to_owned(), monitor_id.to_owned()), input_value);
+            .entry(peer_id.to_owned())
+            .or_default()
+            .insert(monitor_id.to_owned(), input_value);
     }
 
     /// This peer's confirmed value for a monitor, or `None` if unknown-until-first-active.
     pub fn confirmed_value(&self, peer_id: &str, monitor_id: &str) -> Option<u32> {
         self.values
-            .get(&(peer_id.to_owned(), monitor_id.to_owned()))
+            .get(peer_id)
+            .and_then(|m| m.get(monitor_id))
             .copied()
     }
 

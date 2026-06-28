@@ -5,7 +5,9 @@ use sha2::{Digest, Sha256};
 /// Composite, cross-PC monitor identity derived from EDID (docs/PLAN-screen-hop.md §7.2).
 ///
 /// No single field is unique enough on its own — serials are frequently blank/zero or
-/// model-constant — so the stable [`MonitorFingerprint::monitor_id`] hashes the whole tuple.
+/// model-constant — so the stable [`MonitorFingerprint::monitor_id`] hashes the identity tuple
+/// (manufacturer, product, serials). Manufacture week/year and the raw-EDID hash are kept as
+/// advisory fields only and deliberately excluded from the id (see [`MonitorFingerprint::monitor_id`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MonitorFingerprint {
     /// 3-letter PNP manufacturer id, e.g. "AOC".
@@ -43,7 +45,9 @@ impl MonitorFingerprint {
         let pnp_manufacturer = decode_pnp(edid[8], edid[9]);
         let product_code = u16::from_le_bytes([edid[10], edid[11]]);
         let numeric_serial = u32::from_le_bytes([edid[12], edid[13], edid[14], edid[15]]);
-        let week = edid[16];
+        // EDID byte 16 is the manufacture week, EXCEPT the sentinel 0xFF which flags that byte 17
+        // carries a "model year" rather than a manufacture year. Normalize 0xFF to 0 (no week).
+        let week = if edid[16] == 0xFF { 0 } else { edid[16] };
         let year = if edid[17] == 0 { 0 } else { 1990 + edid[17] as u16 };
 
         // Scan the four 18-byte descriptors for an ASCII serial (0xFF).
@@ -90,17 +94,21 @@ impl MonitorFingerprint {
 
     /// Stable cross-PC id: first 12 hex chars of SHA-256 over the composite identity fields.
     ///
-    /// The raw-EDID hash is intentionally excluded so the same panel matches across backends/OSes
-    /// that expose different amounts of raw EDID.
+    /// `week`/`year` and the raw-EDID hash are intentionally **excluded**: a backend that exposes
+    /// only parsed identity (e.g. ddc-hi on Windows, via [`from_parts`]) cannot supply manufacture
+    /// week/year, so including them would give the same physical panel a different id depending on
+    /// which OS/backend enumerated it — fragmenting calibration and ownership across a mixed-OS
+    /// mesh (the normal case). The id therefore covers only fields every backend can produce:
+    /// manufacturer, product code, numeric serial, and ASCII serial.
+    ///
+    /// [`from_parts`]: MonitorFingerprint::from_parts
     pub fn monitor_id(&self) -> String {
         let composite = format!(
-            "{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}",
             self.pnp_manufacturer,
             self.product_code,
             self.numeric_serial,
             self.ascii_serial.as_deref().unwrap_or(""),
-            self.week,
-            self.year,
         );
         sha256_hex(composite.as_bytes())[..12].to_string()
     }
@@ -128,14 +136,18 @@ fn decode_pnp(b0: u8, b1: u8) -> String {
         .collect()
 }
 
-/// EDID descriptor text is space-padded and terminated by 0x0A.
+/// EDID descriptor text is space-padded and terminated by 0x0A. Per the EDID spec it is 7-bit
+/// ASCII; anything outside printable ASCII is dropped rather than mapped to arbitrary `char`s, so a
+/// garbled/virtualized descriptor can't inject control characters into a serial/label.
 fn decode_descriptor_text(bytes: &[u8]) -> String {
     let mut s = String::new();
     for &b in bytes {
         if b == 0x0A {
             break;
         }
-        s.push(b as char);
+        if b.is_ascii_graphic() || b == b' ' {
+            s.push(b as char);
+        }
     }
     s.trim_end().to_string()
 }
@@ -223,12 +235,27 @@ mod tests {
 
     #[test]
     fn from_parts_matches_edid_identity() {
-        // Same identity tuple via parts vs EDID -> same monitor_id (raw hash excluded).
+        // Same identity tuple via parts vs EDID -> SAME monitor_id, even though from_parts cannot
+        // supply week/year/raw-EDID. This is the cross-backend stability the join key requires:
+        // a Windows (parts) peer and a Linux (raw EDID) peer must agree on the id for one panel.
         let via_edid = MonitorFingerprint::from_edid(&sample_edid(1598, None)).unwrap();
         let via_parts = MonitorFingerprint::from_parts("AOC", 0x1234, 1598, None);
-        // week/year differ (parts has 0), so ids differ — confirm parts is internally consistent.
         assert_eq!(via_parts.pnp_manufacturer, via_edid.pnp_manufacturer);
         assert_eq!(via_parts.numeric_serial, via_edid.numeric_serial);
         assert!(via_parts.raw_sha256.is_none());
+        assert_eq!(
+            via_parts.monitor_id(),
+            via_edid.monitor_id(),
+            "the same panel must get the same id regardless of backend"
+        );
+    }
+
+    #[test]
+    fn monitor_id_ignores_week_year_for_cross_backend_stability() {
+        let with_date = MonitorFingerprint::from_edid(&sample_edid(1598, None)).unwrap();
+        let mut no_date = with_date.clone();
+        no_date.week = 0;
+        no_date.year = 0;
+        assert_eq!(with_date.monitor_id(), no_date.monitor_id());
     }
 }
