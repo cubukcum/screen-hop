@@ -23,6 +23,7 @@ fn main() -> Result<(), slint::PlatformError> {
         app.set_screen(match s.as_str() {
             "wizard" => 1,
             "dialog" => 2,
+            "deskmap" => 3,
             _ => 0,
         });
     }
