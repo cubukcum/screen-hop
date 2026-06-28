@@ -3,6 +3,7 @@ import { TrayFlyout, MonitorRow } from "tray_flyout.slint";
 import { OnboardingWizard } from "onboarding.slint";
 import { BlindDialog, StrandedDialog, DdcDialog, PartialDialog } from "dialogs.slint";
 import { DeskMap } from "deskmap.slint";
+import { Settings } from "settings.slint";
 
 export { Theme }
 
@@ -77,5 +78,6 @@ export component AppWindow inherits Window {
         if screen == 2 && dialog == 4: PartialDialog { }
 
         if screen == 3: DeskMap { }
+        if screen == 4: Settings { }
     }
 }

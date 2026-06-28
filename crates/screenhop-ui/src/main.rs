@@ -24,6 +24,7 @@ fn main() -> Result<(), slint::PlatformError> {
             "wizard" => 1,
             "dialog" => 2,
             "deskmap" => 3,
+            "settings" => 4,
             _ => 0,
         });
     }
