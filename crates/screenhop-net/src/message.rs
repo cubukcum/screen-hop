@@ -49,13 +49,20 @@ pub enum Message {
     LockGrant {
         monitor_id: MonitorId,
         holder: PeerId,
-        lease_expires_ms: u64,
+        /// Lease duration in ms (RELATIVE). The holder anchors this to its own clock on receipt —
+        /// an absolute expiry would be meaningless across peers with independent clock origins (D5).
+        lease_ms: u64,
     },
     LockDeny {
         monitor_id: MonitorId,
         reason: String,
     },
     /// Tell the actuating peer to perform the 0x60 write.
+    ///
+    /// `input_value` is **advisory only** and intentionally NOT trusted by the actuator: per D4 a
+    /// peer writes its OWN self-confirmed value (pull-to-self), so the actuator looks the value up
+    /// from its local calibration store rather than honoring this field. It travels for
+    /// diagnostics/logging; a malicious value here can never authorize a write (soft-brick guard).
     SwitchCommand {
         monitor_id: MonitorId,
         target: PeerId,
@@ -109,7 +116,7 @@ mod tests {
             body: Message::LockGrant {
                 monitor_id: "abc123".into(),
                 holder: "peerB".into(),
-                lease_expires_ms: 1234,
+                lease_ms: 30_000,
             },
         });
     }
