@@ -22,6 +22,12 @@ Legend: ✅ done in code (tested) · ⬜ needs you (hardware / LAN / GUI / decis
 - ✅ Quirks DB **wired into the app** actuation path (`LocalActuator` calls `QuirksDb::policy_for` + the calibration store).
 - ✅ **Cross-PC identity correlation** proven through a real 2-peer mesh switch (`tests/cross_pc_identity.rs`).
 - ⬜ Seed the quirks DB with **real tuned values** from your panels (see [contributing-quirks.md](contributing-quirks.md)).
+- ⬜ **Quirks lookup key mismatch (design gap).** The actuation path looks up quirks by the
+  per-**instance** `monitor_id` (a SHA-256 of manufacturer|product|serial — unique per physical
+  panel), but the shipped `quirks/quirks.json` is keyed by **model tokens** (e.g. `SAM-U32H750`), so
+  shipped/community quirks never match a real lookup. Fix before community quirk PRs are useful: have
+  the lookup also try a model token (instance entry still wins). Safety is unaffected either way —
+  quirks can only *restrict*, never confirm a writable value (D7).
 
 ## M3 — LAN mesh
 - ✅ **Discovery**: manual hosts (fully tested) + **mDNS** via `mdns-sd` (register + browse), merged/deduped.
