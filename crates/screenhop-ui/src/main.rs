@@ -49,10 +49,46 @@ fn main() -> Result<(), slint::PlatformError> {
         }
         return Ok(());
     }
+    if args.iter().any(|a| a == "--monitors") {
+        run_monitors();
+        return Ok(());
+    }
     if args.iter().any(|a| a == "--live") {
         return run_live();
     }
     run_preview(&args)
+}
+
+/// Diagnostic: dump every display handle this machine enumerates, with its full identity fields and
+/// whether DDC reads work — so cross-PC identity mismatches (different GPU backends exposing
+/// different EDID) can be diagnosed by comparing two machines' output.
+fn run_monitors() {
+    let mut driver = DdcHiDriver::enumerate();
+    let infos = driver.monitors();
+    println!("{} display handle(s) on this PC:", infos.len());
+    for (i, m) in infos.iter().enumerate() {
+        let input = read_input_retry(&mut driver, &m.id);
+        println!();
+        println!("#{i}  backend = {}", m.backend);
+        println!("    local id     : {}", m.id);
+        println!("    model        : {:?}", m.model);
+        println!("    manufacturer : {:?}", m.manufacturer);
+        println!("    monitor_id   : {:?}", m.monitor_id());
+        match &m.fingerprint {
+            Some(fp) => {
+                let sha = fp.raw_sha256.as_deref().map(|s| &s[..8.min(s.len())]);
+                println!(
+                    "    edid         : pnp={} product=0x{:04X} numeric_serial={} ascii_serial={:?} raw_sha(8)={:?}",
+                    fp.pnp_manufacturer, fp.product_code, fp.numeric_serial, fp.ascii_serial, sha
+                );
+            }
+            None => println!("    edid         : <none exposed by this backend>"),
+        }
+        match input {
+            Some(v) => println!("    reads 0x60   : yes (0x{v:02X})"),
+            None => println!("    reads 0x60   : NO"),
+        }
+    }
 }
 
 /// Calibration (one-shot CLI). With THIS PC currently displayed on the monitors you want to use,
