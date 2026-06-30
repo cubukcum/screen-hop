@@ -1,38 +1,104 @@
 # screen-hop
 
-Reassign your desk's physical monitors between several PCs over the LAN — from a tray
-menu, in one click, without reaching for each monitor's physical input-source button.
+**Reassign your desk's physical monitors between several PCs over the LAN — from a tray menu, in one
+click, without reaching for each monitor's input-source button.**
 
-screen-hop runs a small **per-PC tray agent**; the agents form a **serverless peer mesh** over the
-LAN. When you tell it to "give Monitor 2 to the laptop," the mesh routes a DDC/CI **Input Select**
-write (VCP feature `0x60`) to whichever PC can physically drive that panel — by default the *target*
-PC switches the monitor **to itself** (the reliable direction) — then reconciles ownership against
-the monitor's live `0x60` value as ground truth.
+[![CI](https://github.com/cubukcum/screen-hop/actions/workflows/ci.yml/badge.svg)](https://github.com/cubukcum/screen-hop/actions/workflows/ci.yml)
+![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)
+![rustc 1.82+](https://img.shields.io/badge/rustc-1.82%2B-orange.svg)
+![platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
+![status: pre-1.0](https://img.shields.io/badge/status-pre--1.0-yellow.svg)
 
-> **Status:** implementation in place across milestones **M0–M6** (domain core, identity, mesh +
-> discovery, orchestration/presets/reconcile, UI controller, CI + packaging). What remains is the
-> **verification that needs real hardware, a real LAN, and design sign-off** — pull-to-self on ≥2
-> rigs, mDNS on a real LAN, the onboarding/soak numbers, and the Slint live-binding to the
-> controller. What's code-complete vs. what still needs you is laid out in
-> [docs/REMAINING-CHECKLIST.md](docs/REMAINING-CHECKLIST.md) (with the
-> [hardware verdict log](docs/hardware/pull-to-self-verdicts.md)). Cross-platform **Rust + Slint**,
-> targeting **Windows → Linux → macOS (best-effort)**. See
-> [docs/PLAN-screen-hop.md](docs/PLAN-screen-hop.md) for the full product definition, architecture,
-> and decision log.
+<p align="center">
+  <img src="docs/design/screen-hop/project/screenshots/routing-hero.png" alt="screen-hop desk map / routing view" width="760"><br>
+  <em>Design preview — the desk-map / patchbay view. (UI is built as a Slint design layer; live
+  binding to the backend is in progress — see <a href="#status">Status</a>.)</em>
+</p>
 
-## Honest boundaries (read these first)
+---
 
-screen-hop is only as good as each monitor's DDC/CI implementation, and it is deliberately honest
+## Why
+
+If you run more than one PC at your desk — a work laptop, a personal tower, a home-server box — but
+share one set of nice monitors between them, every switch means hunting for each monitor's physical
+**input-source** button. screen-hop turns that into a single click from a tray menu: "give Monitor 2
+to the laptop," and the right machine takes the panel.
+
+It does this with **DDC/CI** — the same protocol your monitor's on-screen menu uses — to send an
+**Input Select** command (VCP feature `0x60`) to whichever PC can physically drive that panel. No
+KVM hardware, no extra cables, no cloud.
+
+## How it works
+
+- Each PC runs a small **tray agent**. The agents form a **serverless peer mesh** over the LAN
+  (no central server, no coordinator election).
+- When you reassign a monitor, the mesh routes the switch to the PC that can drive it. By default
+  the **target** PC switches the monitor **to itself** ("pull-to-self" — the reliable direction).
+- Ownership is then reconciled against the monitor's **live `0x60` value as ground truth**, so if
+  someone presses the physical button, the UI catches up instead of lying to you.
+- All mesh traffic is **encrypted + authenticated**, **LAN-only** (no WAN, no UPnP). See
+  [Security](#security).
+
+## Honest boundaries (please read first)
+
+screen-hop is only as good as each monitor's DDC/CI implementation, and it is **deliberately honest**
 about the limits:
 
 - Behavior is **per-monitor** and must be discovered on real hardware (a built-in calibration step).
 - It **cannot** touch BIOS / pre-OS / boot / lock screens — DDC/CI needs a running, logged-in session.
 - Switching is **not instant** (~1–3 s, occasional retry) and is shown as progress, never faked.
-- If the PC that must drive a panel is off/asleep, that monitor is **stranded** — there is no software
-  recovery; the physical OSD button is the honest fallback, and the UI says so.
+- If the PC that must drive a panel is off/asleep, that monitor is **stranded** — there is no
+  software recovery; the physical OSD button is the honest fallback, and the UI says so.
 - Multi-monitor presets are **best-effort**, never atomic — per-monitor success/failure is surfaced.
 
-## Workspace layout
+## Status
+
+This is a **pre-1.0, in-progress** project, built and developed in the open.
+
+- ✅ **The engine is implemented and tested.** Domain core + soft-brick guard, monitor identity &
+  calibration, the encrypted LAN mesh + discovery, orchestration (routing, presets, reconciliation,
+  stranded / DDC-disabled / blind states), a measurement harness, and a backend-facing UI
+  controller — **121 passing tests**, with `cargo fmt`, `clippy -D warnings`, and a CI workflow.
+- 🚧 **Not yet a finished installable app.** The Slint UI still needs to be **wired to the backend at
+  runtime**, the **installer/autostart** isn't built, and several things need **real-hardware /
+  real-LAN verification** (pull-to-self across panels, mDNS on a LAN, onboarding & soak numbers).
+
+The exact "done in code vs. needs verification" breakdown lives in
+[docs/REMAINING-CHECKLIST.md](docs/REMAINING-CHECKLIST.md). The full product definition, architecture,
+and decision log are in [docs/PLAN-screen-hop.md](docs/PLAN-screen-hop.md).
+
+## Platforms
+
+Cross-platform **Rust + [Slint](https://slint.dev)**, prioritized **Windows → Linux → macOS
+(best-effort)**. The pure-logic crates build and test on any platform; DDC and UI need their
+platform toolchains. macOS DDC is the most constrained (Apple Silicon drives panels over USB-C/TB
+only; reads are unreliable).
+
+## Build & run
+
+Requires Rust **1.82+** (the workspace MSRV).
+
+```sh
+cargo build --workspace
+cargo test  --workspace      # pure-logic crates; DDC/UI need their platform toolchains
+```
+
+**Try the hardware spike** (interactive; reads/writes a real monitor's input source — this is how you
+answer "does my panel even cooperate?"):
+
+```sh
+cargo run -p screenhop-spike            # interactive menu
+cargo run -p screenhop-spike -- list    # just enumerate panels
+```
+
+**Preview the UI surfaces** (renders a design surface to a window, or to a PNG for diffing):
+
+```sh
+cargo run -p screenhop-ui -- --screen deskmap --dark
+cargo run -p screenhop-ui -- --shot out.png --screen flyout
+```
+
+## Architecture
 
 ```
 crates/
@@ -42,52 +108,44 @@ crates/
   screenhop-net/       AEAD transport (XChaCha20-Poly1305), Ed25519 handshake + TOFU pinning, wire schema
   screenhop-state/     per-monitor lease lock, last-writer-wins ownership map
   screenhop-quirks/    panel-global quirks DB (merge precedence user > local > shipped)
-  screenhop-app/       mesh node + orchestration (routing, blind-point, presets, partition guard)
-  screenhop-ui/        Slint tray UI + onboarding wizard surfaces
+  screenhop-app/       mesh node + orchestration (discovery, routing, presets, reconcile, partition guard)
+  screenhop-ui/        Slint tray UI surfaces + the backend-facing controller
   screenhop-spike/     M0 hardware feasibility spike (enumerate/read/write 0x60)
 quirks/quirks.json     shipped community quirks DB
-docs/                  plan + Claude Design handoff
+docs/                  plan, design handoff, hardware verdicts, contributor guides
 ```
 
-## Build & test
+## Security
 
-Requires Rust **1.82+** (the workspace MSRV).
+A single shared **mesh secret** is stretched with **Argon2id** into a group key; **every** mesh
+message is encrypted + authenticated with **XChaCha20-Poly1305**, with replay/sequence guards. Each
+install has an **Ed25519 identity** pinned **trust-on-first-use**, so a changed key for a known peer
+is refused. Control is **LAN / Private only** — no WAN, no UPnP. The threat model is
+denial-of-visibility by an *unpaired* host on a personal LAN; an already-paired peer run by the same
+operator is out of scope. Full model and the Windows/DPAPI re-pair caveat: [SECURITY.md](SECURITY.md).
 
-```sh
-cargo build --workspace
-cargo test  --workspace      # pure-logic crates; DDC/UI need their platform toolchains
-```
+To report a vulnerability, please follow [SECURITY.md](SECURITY.md) — not a public issue.
 
-The M0 hardware spike (interactive; reads/writes a real monitor's input source):
+## Contributing & collaboration
 
-```sh
-cargo run -p screenhop-spike            # interactive menu
-cargo run -p screenhop-spike -- list    # just enumerate panels
-```
+**This is an open project and I'd genuinely welcome collaborators.** It's at the fun stage: the hard
+architecture is done and tested, and what's left is high-impact, well-scoped work. If any of this
+sounds like you, please open an issue or a discussion to say hi:
 
-UI design-preview / snapshot mode (renders a surface to PNG for design diffing):
+- 🖥️ **Hardware testers** — run the spike on your monitors and contribute a one-line verdict + a
+  panel quirk. This is the single most valuable thing: screen-hop's reliability is *defined* by
+  real-panel data. See [docs/contributing-quirks.md](docs/contributing-quirks.md).
+- 🎨 **Slint / UI** — wire the tray surfaces to the backend `Controller` and the live mesh loop
+  (the biggest remaining code task).
+- 📦 **Packaging** — Windows installer (Inno) + Scheduled-Task autostart, code-signing, CI release.
+- 🦀 **Rust** — pick anything from [docs/REMAINING-CHECKLIST.md](docs/REMAINING-CHECKLIST.md).
 
-```sh
-cargo run -p screenhop-ui -- --screen flyout --dark
-cargo run -p screenhop-ui -- --shot out.png --screen deskmap
-```
-
-## Security model (summary)
-
-A single shared **mesh secret** is stretched with Argon2id into a group key; **every** mesh message
-is encrypted + authenticated with XChaCha20-Poly1305. Each install has an **Ed25519 identity** that
-is pinned trust-on-first-use, so a changed key for a known peer is refused. Control is **LAN/Private
-only** — no WAN, no UPnP. The threat model is denial-of-visibility by an *unpaired* host on a
-personal LAN; an already-paired peer run by the same operator is out of scope. See plan §9.
-
-## Contributing & security
-
-- [CONTRIBUTING.md](CONTRIBUTING.md) — build/test, the CI gates, and the workspace map.
-- [docs/contributing-quirks.md](docs/contributing-quirks.md) — how to submit a panel quirk.
-- [SECURITY.md](SECURITY.md) — threat model summary, how to report a vulnerability, and the
-  Windows/DPAPI re-pair caveat.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) for build/test, the CI gates, and the workspace map.
+Good first contributions are panel quirks and small, well-tested fixes. Be kind, be honest about
+hardware limits (it's the whole ethos here), and have fun.
 
 ## License
 
 Dual-licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
-[LICENSE-APACHE](LICENSE-APACHE). You may use either at your option.
+[LICENSE-APACHE](LICENSE-APACHE). Use whichever you prefer. Contributions are accepted under the same
+dual license.
