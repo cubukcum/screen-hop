@@ -75,12 +75,15 @@ fn run_calibrate() -> std::io::Result<()> {
     for m in &monitors {
         let id = m.monitor_id().unwrap_or_else(|| m.id.clone());
         let label = m.model.clone().unwrap_or_else(|| id.clone());
-        match driver.try_read_input(&id) {
+        match read_input_retry(&mut driver, &id) {
             Some(v) => {
                 cal.record(&me, &id, v);
                 println!("  [ok]   {label} ({id}) = 0x{v:02X}");
             }
-            None => println!("  [skip] {label} ({id}) — DDC/CI unreadable (disabled?)"),
+            None => println!(
+                "  [skip] {label} ({id}) — DDC/CI unreadable after retries (is this PC the shown \
+                 input, and is DDC/CI enabled in the OSD?)"
+            ),
         }
     }
     persist::save_calibration(&config_dir, &cal)?;
@@ -89,6 +92,20 @@ fn run_calibrate() -> std::io::Result<()> {
         config_dir.join("calibration.json").display()
     );
     Ok(())
+}
+
+/// Read a panel's input, retrying a few times — DDC reads are flaky on some GPU backends (the
+/// first attempt often fails even when the panel is fine), so a one-shot read drops good panels.
+fn read_input_retry(driver: &mut DdcHiDriver, monitor_id: &str) -> Option<u32> {
+    for attempt in 0..8 {
+        if let Some(v) = driver.try_read_input(monitor_id) {
+            return Some(v);
+        }
+        if attempt < 7 {
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    }
+    None
 }
 
 /// Periodic reconcile sweep (the cross-platform half of the OS trigger; the Windows
