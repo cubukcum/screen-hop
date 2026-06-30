@@ -8,6 +8,7 @@ pub mod harness;
 pub mod mesh;
 pub mod orchestration;
 pub mod peers;
+pub mod persist;
 pub mod reconcile;
 
 pub use actuator::LocalActuator;
@@ -19,6 +20,7 @@ pub use orchestration::{
     PresetOutcome, SwitchOp, SwitchOpResult, SwitchPlan,
 };
 pub use peers::{PeerPresence, PeerRegistry};
+pub use persist::AgentConfig;
 pub use reconcile::{
     read_to_live_read, reconcile_all, reconcile_one, reconcile_reads, LiveRead, ReconcileChange,
 };

@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use serde::{Deserialize, Serialize};
+
 /// Per-`(peer, monitor)` confirmed `0x60` input value.
 ///
 /// Per decision **D4**, a value is the selector for *one peer's own cable* on a panel and is
@@ -9,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 ///
 /// Stored as a nested `peer -> monitor -> value` map so lookups borrow `&str` keys directly,
 /// without allocating an owned `(String, String)` tuple on every read.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct CalibrationStore {
     values: HashMap<String, HashMap<String, u32>>,
 }

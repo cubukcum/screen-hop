@@ -11,3 +11,6 @@ screenhop-net = { path = "../screenhop-net" }
 screenhop-quirks = { path = "../screenhop-quirks" }
 screenhop-state = { path = "../screenhop-state" }
 mdns-sd = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+directories = { workspace = true }
