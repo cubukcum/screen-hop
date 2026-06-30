@@ -4830,6 +4830,8 @@ dependencies = [
  "screenhop-app",
  "screenhop-core",
  "screenhop-ddc",
+ "screenhop-net",
+ "screenhop-quirks",
  "screenhop-state",
  "slint",
  "slint-build",

@@ -10,6 +10,7 @@ pub mod orchestration;
 pub mod peers;
 pub mod persist;
 pub mod reconcile;
+pub mod runtime;
 
 pub use actuator::LocalActuator;
 pub use discovery::{merge, DiscoveredPeer, Discovery, ManualHosts, MdnsDiscovery, PeerSource};
@@ -24,3 +25,4 @@ pub use persist::AgentConfig;
 pub use reconcile::{
     read_to_live_read, reconcile_all, reconcile_one, reconcile_reads, LiveRead, ReconcileChange,
 };
+pub use runtime::{ActuatorRequest, ChannelActuator, LiveAgent, UiIntent};

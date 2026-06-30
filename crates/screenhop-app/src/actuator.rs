@@ -53,15 +53,17 @@ impl<D: MonitorDriver, L: Delayer, C: Clock> LocalActuator<D, L, C> {
     pub fn quirks_mut(&mut self) -> &mut QuirksDb {
         &mut self.quirks
     }
-}
 
-impl<D, L, C> Actuator for LocalActuator<D, L, C>
-where
-    D: MonitorDriver + Send,
-    L: Delayer + Send,
-    C: Clock + Send,
-{
-    fn switch_to_self(&mut self, monitor_id: &str) -> ActuationReport {
+    /// Mutable access to the underlying driver (e.g. for the reconcile trigger to read a panel's
+    /// live `0x60`, or for calibration to learn the active input value).
+    pub fn driver_mut(&mut self) -> &mut D {
+        self.executor.driver_mut()
+    }
+
+    /// Perform a pull-to-self switch. This is the real logic; the [`Actuator`] trait impl just
+    /// delegates here. It's an inherent method (no `Send` bound) so the dedicated actuator thread
+    /// can call it directly on a non-`Send` driver like `DdcHiDriver`.
+    pub fn perform_switch(&mut self, monitor_id: &str) -> ActuationReport {
         // Pull-to-self writes THIS peer's own self-calibrated value. With no confirmed value the
         // panel is "unknown until first active" (D4) — refuse without inventing a value to write.
         let Some(value) = self.calibration.confirmed_value(&self.peer_id, monitor_id) else {
@@ -80,6 +82,17 @@ where
         };
         let result = self.executor.execute(&request, &policy);
         ActuationReport::new(result.outcome, result.observed_value)
+    }
+}
+
+impl<D, L, C> Actuator for LocalActuator<D, L, C>
+where
+    D: MonitorDriver + Send,
+    L: Delayer + Send,
+    C: Clock + Send,
+{
+    fn switch_to_self(&mut self, monitor_id: &str) -> ActuationReport {
+        self.perform_switch(monitor_id)
     }
 }
 
