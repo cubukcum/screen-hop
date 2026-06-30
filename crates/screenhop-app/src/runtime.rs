@@ -130,6 +130,8 @@ fn sleep_until(total: Duration, shutdown: &AtomicBool) {
 pub struct LiveAgent {
     node: Arc<Node>,
     me: String,
+    /// Friendly display name announced to peers (e.g. hostname), shown in their tray.
+    name: String,
     self_addr: SocketAddr,
     manual: ManualHosts,
     mdns: Option<MdnsDiscovery>,
@@ -140,6 +142,7 @@ pub struct LiveAgent {
 impl LiveAgent {
     pub fn new(
         node: Node,
+        name: impl Into<String>,
         self_addr: SocketAddr,
         manual: ManualHosts,
         mdns: Option<MdnsDiscovery>,
@@ -148,6 +151,7 @@ impl LiveAgent {
         Self {
             node: Arc::new(node),
             me,
+            name: name.into(),
             self_addr,
             manual,
             mdns,
@@ -177,6 +181,7 @@ impl LiveAgent {
         let LiveAgent {
             node,
             me,
+            name,
             self_addr,
             manual,
             mdns,
@@ -216,7 +221,7 @@ impl LiveAgent {
                             lock(&peer_addrs).insert(pid, addr);
                             // Push our presence; the peer's handler records us in its registry.
                             let _ = session.send(Message::Announce {
-                                name: me.clone(),
+                                name: name.clone(),
                                 endpoints: vec![self_addr.to_string()],
                                 can_actuate: true,
                                 state_version: 0,

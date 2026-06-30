@@ -308,7 +308,20 @@ fn run_live() -> Result<(), slint::PlatformError> {
     let mdns = MdnsDiscovery::start().ok();
 
     let (intent_tx, intent_rx) = mpsc::channel::<UiIntent>();
-    let agent = LiveAgent::new(node, self_addr, manual, mdns);
+    // Announce a friendly name (the machine's hostname, or the configured name) instead of the
+    // 64-char peer id, so peers show up readably in each other's tray.
+    let agent_name = {
+        let configured = cfg.name.trim();
+        if !configured.is_empty() && configured != "screen-hop" {
+            configured.to_string()
+        } else {
+            std::env::var("COMPUTERNAME")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "screen-hop".to_string())
+        }
+    };
+    let agent = LiveAgent::new(node, agent_name, self_addr, manual, mdns);
     let agent_state = agent.state();
     std::thread::spawn(move || agent.run(listener, intent_rx));
 
@@ -352,8 +365,10 @@ fn run_live() -> Result<(), slint::PlatformError> {
         let monitors_vm = monitors_vm.clone();
         app.on_switch(move |mi, pi| {
             let Some((monitor_id, target)) = binding.borrow().resolve_switch(mi, pi) else {
+                eprintln!("screen-hop: click row={mi} seg={pi} -> no monitor/peer at those indices");
                 return;
             };
+            eprintln!("screen-hop: click row={mi} seg={pi} -> switch monitor {monitor_id} to peer {target}");
             let _ = intent_tx.send(UiIntent::Switch {
                 monitor_id: monitor_id.clone(),
                 target_peer_id: target.clone(),
@@ -390,11 +405,14 @@ fn run_live() -> Result<(), slint::PlatformError> {
             let mut peer_labels = vec!["This PC".to_string()];
             for pv in controller.peer_views(now) {
                 if pv.id != me {
-                    peer_labels.push(if pv.name.is_empty() {
+                    // The tray segment is narrow; show a short label (friendly name, else a short
+                    // id prefix) so it fits and the right segment is clickable.
+                    let raw = if pv.name.is_empty() {
                         pv.id.clone()
                     } else {
                         pv.name.clone()
-                    });
+                    };
+                    peer_labels.push(raw.chars().take(8).collect::<String>());
                     peer_ids.push(pv.id);
                 }
             }
