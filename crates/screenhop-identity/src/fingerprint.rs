@@ -48,7 +48,11 @@ impl MonitorFingerprint {
         // EDID byte 16 is the manufacture week, EXCEPT the sentinel 0xFF which flags that byte 17
         // carries a "model year" rather than a manufacture year. Normalize 0xFF to 0 (no week).
         let week = if edid[16] == 0xFF { 0 } else { edid[16] };
-        let year = if edid[17] == 0 { 0 } else { 1990 + edid[17] as u16 };
+        let year = if edid[17] == 0 {
+            0
+        } else {
+            1990 + edid[17] as u16
+        };
 
         // Scan the four 18-byte descriptors for an ASCII serial (0xFF).
         let mut ascii_serial = None;
@@ -212,8 +216,14 @@ mod tests {
     fn rejects_bad_header_and_short_input() {
         let mut bad = sample_edid(1, None);
         bad[0] = 0x12;
-        assert_eq!(MonitorFingerprint::from_edid(&bad), Err(EdidError::BadHeader));
-        assert_eq!(MonitorFingerprint::from_edid(&[0u8; 10]), Err(EdidError::TooShort));
+        assert_eq!(
+            MonitorFingerprint::from_edid(&bad),
+            Err(EdidError::BadHeader)
+        );
+        assert_eq!(
+            MonitorFingerprint::from_edid(&[0u8; 10]),
+            Err(EdidError::TooShort)
+        );
     }
 
     #[test]
@@ -228,9 +238,15 @@ mod tests {
 
     #[test]
     fn ambiguity_tracks_serial_presence() {
-        assert!(MonitorFingerprint::from_edid(&sample_edid(0, None)).unwrap().is_ambiguous());
-        assert!(!MonitorFingerprint::from_edid(&sample_edid(1598, None)).unwrap().is_ambiguous());
-        assert!(!MonitorFingerprint::from_edid(&sample_edid(0, Some("S1"))).unwrap().is_ambiguous());
+        assert!(MonitorFingerprint::from_edid(&sample_edid(0, None))
+            .unwrap()
+            .is_ambiguous());
+        assert!(!MonitorFingerprint::from_edid(&sample_edid(1598, None))
+            .unwrap()
+            .is_ambiguous());
+        assert!(!MonitorFingerprint::from_edid(&sample_edid(0, Some("S1")))
+            .unwrap()
+            .is_ambiguous());
     }
 
     #[test]

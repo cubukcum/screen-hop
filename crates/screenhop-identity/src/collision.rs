@@ -134,8 +134,15 @@ mod tests {
 
     #[test]
     fn distinct_serials_do_not_collide() {
-        let panels = vec![panel(1, None, None), panel(2, None, None), panel(3, None, None)];
-        assert_eq!(group_by_id(&[fp(1, None), fp(2, None), fp(3, None)]).len(), 3);
+        let panels = vec![
+            panel(1, None, None),
+            panel(2, None, None),
+            panel(3, None, None),
+        ];
+        assert_eq!(
+            group_by_id(&[fp(1, None), fp(2, None), fp(3, None)]).len(),
+            3
+        );
         assert!(collisions_needing_labels(&panels).is_empty());
     }
 }

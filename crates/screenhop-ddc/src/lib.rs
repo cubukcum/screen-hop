@@ -29,7 +29,9 @@ pub struct MonitorInfo {
 impl MonitorInfo {
     /// Stable cross-PC monitor id, when a fingerprint could be built.
     pub fn monitor_id(&self) -> Option<String> {
-        self.fingerprint.as_ref().map(MonitorFingerprint::monitor_id)
+        self.fingerprint
+            .as_ref()
+            .map(MonitorFingerprint::monitor_id)
     }
 }
 
@@ -157,7 +159,11 @@ fn fingerprint_from_info(info: &DisplayInfo) -> Option<MonitorFingerprint> {
 
 fn provisional_id(index: usize, d: &Display) -> String {
     let mfr = d.info.manufacturer_id.clone().unwrap_or_default();
-    let model = d.info.model_name.clone().unwrap_or_else(|| "Monitor".into());
+    let model = d
+        .info
+        .model_name
+        .clone()
+        .unwrap_or_else(|| "Monitor".into());
     let serial = d.info.serial.map(|s| s.to_string()).unwrap_or_default();
     format!("{mfr}-{model}-{serial}#{index}")
 }

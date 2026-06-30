@@ -65,7 +65,8 @@ pub fn verify(public_bytes: &[u8; 32], message: &[u8], signature: &[u8; 64]) -> 
     let Ok(vk) = VerifyingKey::from_bytes(public_bytes) else {
         return false;
     };
-    vk.verify(message, &Signature::from_bytes(signature)).is_ok()
+    vk.verify(message, &Signature::from_bytes(signature))
+        .is_ok()
 }
 
 /// Trust-on-first-use store of `peer_id -> public key`.
@@ -84,7 +85,11 @@ impl PinStore {
     }
 
     /// Pin `peer_id` to `public_bytes` on first sight; on later sight require it to match.
-    pub fn check_or_pin(&mut self, peer_id: &str, public_bytes: [u8; 32]) -> Result<(), PinMismatch> {
+    pub fn check_or_pin(
+        &mut self,
+        peer_id: &str,
+        public_bytes: [u8; 32],
+    ) -> Result<(), PinMismatch> {
         match self.pins.get(peer_id) {
             Some(existing) if *existing != public_bytes => Err(PinMismatch),
             Some(_) => Ok(()),
