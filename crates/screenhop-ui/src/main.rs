@@ -7,18 +7,20 @@
 //!   tray clicks into actual DDC switches. Verified on a 2-PC rig (see docs/REMAINING-CHECKLIST.md).
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::{SocketAddr, TcpListener};
 use std::rc::Rc;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use screenhop_app::discovery::{ManualHosts, MdnsDiscovery};
 use screenhop_app::{
-    persist, ActuatorRequest, ChannelActuator, LiveAgent, LocalActuator, Node, UiIntent,
+    persist, reconcile_reads, ActuatorRequest, ChannelActuator, LiveAgent, LocalActuator,
+    MeshState, Node, UiIntent,
 };
 use screenhop_core::{MonitorDriver, RealClock, RealDelayer, SwitchExecutor};
 use screenhop_ddc::DdcHiDriver;
+use screenhop_identity::CalibrationStore;
 use screenhop_net::PeerIdentity;
 use screenhop_quirks::QuirksDb;
 use screenhop_ui::{bind, AppWindow, Controller, MonitorRow, Peer};
@@ -40,10 +42,95 @@ fn wall_ms() -> u64 {
 
 fn main() -> Result<(), slint::PlatformError> {
     let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--calibrate") {
+        if let Err(e) = run_calibrate() {
+            eprintln!("screen-hop --calibrate: {e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     if args.iter().any(|a| a == "--live") {
         return run_live();
     }
     run_preview(&args)
+}
+
+/// Calibration (one-shot CLI). With THIS PC currently displayed on the monitors you want to use,
+/// read each panel's live `0x60` and record it as this peer's pull-to-self value, then persist.
+/// Re-run any time the wiring changes. This is the headless equivalent of the wizard's calibrate
+/// step (the GUI wizard wiring is still pending — see docs/REMAINING-CHECKLIST.md).
+fn run_calibrate() -> std::io::Result<()> {
+    let config_dir = persist::ensure_config_dir()?;
+    let identity = persist::load_or_create_identity(&config_dir)?;
+    let me = identity.peer_id();
+    let mut cal = persist::load_calibration(&config_dir)?;
+
+    let mut driver = DdcHiDriver::enumerate();
+    let monitors = driver.monitors();
+    if monitors.is_empty() {
+        println!("No DDC/CI monitors found. Enable DDC/CI in each monitor's OSD and retry.");
+        return Ok(());
+    }
+    println!("Calibrating as peer {me} (make sure THIS PC is the shown input on each panel):");
+    for m in &monitors {
+        let id = m.monitor_id().unwrap_or_else(|| m.id.clone());
+        let label = m.model.clone().unwrap_or_else(|| id.clone());
+        match driver.try_read_input(&id) {
+            Some(v) => {
+                cal.record(&me, &id, v);
+                println!("  [ok]   {label} ({id}) = 0x{v:02X}");
+            }
+            None => println!("  [skip] {label} ({id}) — DDC/CI unreadable (disabled?)"),
+        }
+    }
+    persist::save_calibration(&config_dir, &cal)?;
+    println!(
+        "Saved calibration to {}",
+        config_dir.join("calibration.json").display()
+    );
+    Ok(())
+}
+
+/// Periodic reconcile sweep (the cross-platform half of the OS trigger; the Windows
+/// `WM_DISPLAYCHANGE` hook is a documented follow-up). Reads each panel's live `0x60` THROUGH the
+/// actuator thread (so the driver stays on its own thread and no lock is held during the slow read),
+/// then folds the results into ownership under a brief lock.
+fn reconcile_loop(
+    reads_tx: mpsc::Sender<ActuatorRequest>,
+    state: Arc<Mutex<MeshState>>,
+    calibration: CalibrationStore,
+    me: String,
+    monitor_ids: Vec<String>,
+) {
+    if monitor_ids.is_empty() {
+        return;
+    }
+    loop {
+        std::thread::sleep(Duration::from_secs(4));
+        let mut reads: Vec<(String, Option<u32>)> = Vec::with_capacity(monitor_ids.len());
+        for id in &monitor_ids {
+            let (reply, rx) = mpsc::channel();
+            if reads_tx
+                .send(ActuatorRequest::Read {
+                    monitor_id: id.clone(),
+                    reply,
+                })
+                .is_err()
+            {
+                return; // actuator thread gone
+            }
+            let val = rx.recv_timeout(Duration::from_secs(20)).ok().flatten();
+            reads.push((id.clone(), val));
+        }
+        let now = wall_ms();
+        let mut online: HashSet<String> = {
+            let st = state.lock().unwrap_or_else(|e| e.into_inner());
+            st.peers.online(now, 20_000).into_iter().collect()
+        };
+        online.insert(me.clone());
+        let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
+        reconcile_reads(&mut st.ownership, &calibration, &online, &reads, now);
+    }
 }
 
 /// Live mode: the real agent.
@@ -125,6 +212,7 @@ fn run_live() -> Result<(), slint::PlatformError> {
     };
 
     // --- mesh node + agent ----------------------------------------------------------------------
+    let recon_tx = req_tx.clone(); // a second handle to the actuator thread, for reconcile reads
     let node = Node::new(identity, &secret)
         .with_actuator(ChannelActuator::new(req_tx))
         .with_pin_store(persist::pins_path(&config_dir));
@@ -150,8 +238,17 @@ fn run_live() -> Result<(), slint::PlatformError> {
     let agent_state = agent.state();
     std::thread::spawn(move || agent.run(listener, intent_rx));
 
+    // Periodic reconcile sweep (the cross-platform half of the OS trigger).
+    {
+        let state = Arc::clone(&agent_state);
+        let cal = calibration.clone();
+        let me = me.clone();
+        let mons = monitor_ids.clone();
+        std::thread::spawn(move || reconcile_loop(recon_tx, state, cal, me, mons));
+    }
+
     // --- controller + UI binding ----------------------------------------------------------------
-    let mut controller = Controller::new(me.clone(), agent_state, 20_000);
+    let mut controller = Controller::new(me.clone(), Arc::clone(&agent_state), 20_000);
     for (id, label) in &labels {
         controller.set_label(id, label);
     }
@@ -274,8 +371,7 @@ fn run_readonly(
     monitor_ids: &[String],
     labels: &HashMap<String, String>,
 ) -> Result<(), slint::PlatformError> {
-    use std::sync::{Arc, Mutex};
-    let state = Arc::new(Mutex::new(screenhop_app::MeshState::default()));
+    let state = Arc::new(Mutex::new(MeshState::default()));
     let mut controller = Controller::new(me, state, 20_000);
     for (id, label) in labels {
         controller.set_label(id, label);

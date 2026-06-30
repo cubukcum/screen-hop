@@ -10,6 +10,7 @@ image = { workspace = true }
 screenhop-app = { path = "../screenhop-app" }
 screenhop-core = { path = "../screenhop-core" }
 screenhop-ddc = { path = "../screenhop-ddc" }
+screenhop-identity = { path = "../screenhop-identity" }
 screenhop-net = { path = "../screenhop-net" }
 screenhop-quirks = { path = "../screenhop-quirks" }
 screenhop-state = { path = "../screenhop-state" }

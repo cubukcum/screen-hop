@@ -4830,6 +4830,7 @@ dependencies = [
  "screenhop-app",
  "screenhop-core",
  "screenhop-ddc",
+ "screenhop-identity",
  "screenhop-net",
  "screenhop-quirks",
  "screenhop-state",
