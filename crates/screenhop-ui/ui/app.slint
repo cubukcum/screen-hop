@@ -1,5 +1,5 @@
 import { Theme } from "theme.slint";
-import { TrayFlyout, MonitorRow } from "tray_flyout.slint";
+import { TrayFlyout, MonitorRow, Peer, Preset } from "tray_flyout.slint";
 import { OnboardingWizard } from "onboarding.slint";
 import { BlindDialog, StrandedDialog, DdcDialog, PartialDialog, SwitchingDialog, DegradedDialog } from "dialogs.slint";
 import { DeskMap } from "deskmap.slint";
@@ -26,6 +26,25 @@ export component AppWindow inherits Window {
         { name: "Right 27\"", spec: "DP-2 · 1440p", active: 0, switching: false },
     ];
 
+    // Tray inputs. The defaults drive the standalone design preview; in `--live` mode Rust
+    // overrides these (set_peers / set_presets / on_switch / …) from the backend Controller.
+    in-out property <[Peer]> peers: [
+        { label: "Work", color: Theme.pc-work },
+        { label: "Gam", color: Theme.pc-gaming },
+        { label: "Lab", color: Theme.pc-homelab },
+    ];
+    in-out property <[Preset]> presets: [
+        { name: "Trading", active: true },
+        { name: "Work", active: false },
+        { name: "Couch", active: false },
+    ];
+    in-out property <int> online-count: 3;
+    in-out property <bool> degraded: false;
+
+    // Forwarded from the tray so Rust can connect them in --live mode (overriding the preview body).
+    callback switch(int, int);
+    callback apply-preset(int);
+
     // Simulates the honest async switch in the dev preview: a click puts the row in `switching`,
     // and the owner flips only when this "settle" fires — never optimistically on click (§6.1).
     property <int> pending-mon: -1;
@@ -40,6 +59,18 @@ export component AppWindow inherits Window {
                 root.pending-mon = -1;
             }
             self.running = false;
+        }
+    }
+
+    // Default (design-preview) switch behaviour: enter the honest in-flight state now; the owner
+    // flips only when `settle` confirms — never optimistically on click (§6.1). In --live mode Rust
+    // overrides this handler with a real mesh switch.
+    switch(mi, pi) => {
+        if (mi != root.pending-mon) {
+            root.monitors[mi].switching = true;
+            root.pending-mon = mi;
+            root.pending-peer = pi;
+            settle.running = true;
         }
     }
 
@@ -69,29 +100,14 @@ export component AppWindow inherits Window {
         }
 
         if screen == 0: TrayFlyout {
-            online-count: 3;
+            online-count: root.online-count;
+            degraded: root.degraded;
             monitors: root.monitors;
-            peers: [
-                { label: "Work", color: Theme.pc-work },
-                { label: "Gam", color: Theme.pc-gaming },
-                { label: "Lab", color: Theme.pc-homelab },
-            ];
-            presets: [
-                { name: "Trading", active: true },
-                { name: "Work", active: false },
-                { name: "Couch", active: false },
-            ];
+            peers: root.peers;
+            presets: root.presets;
             toggle-theme => { Theme.dark = !Theme.dark; }
-            // Honest flow: enter the in-flight state now; the owner flips when `settle` confirms.
-            switch(mi, pi) => {
-                if (mi != root.pending-mon) {
-                    root.monitors[mi].switching = true;
-                    root.pending-mon = mi;
-                    root.pending-peer = pi;
-                    settle.running = true;
-                }
-            }
-            apply-preset(pi) => { }
+            switch(mi, pi) => { root.switch(mi, pi); }
+            apply-preset(pi) => { root.apply-preset(pi); }
         }
 
         if screen == 1: OnboardingWizard {

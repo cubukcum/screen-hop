@@ -7,6 +7,11 @@
 //! Slint property binding and the live mesh event loop are wired in `main.rs` and verified on the
 //! 2-PC rig (M5 checklist).
 
+// Slint-generated UI types (AppWindow + the exported structs MonitorRow/Peer/Preset/…), compiled by
+// build.rs and included here so the binding layer and the bin share one definition.
+slint::include_modules!();
+
+pub mod bind;
 pub mod controller;
 
 pub use controller::{Controller, MonitorUiState, MonitorView, PeerView};

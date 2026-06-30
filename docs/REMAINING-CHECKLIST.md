@@ -36,8 +36,10 @@ Legend: ✅ done in code (tested) · ⬜ needs you (hardware / LAN / GUI / decis
 - ⬜ Wire the OS **periodic re-read + `WM_DISPLAYCHANGE`** trigger that *calls* `reconcile_all` (Windows glue; verify on hardware).
 
 ## M5 — Tray UI & onboarding
-- ✅ **Controller** (`screenhop-ui::controller`) — the real data path: ownership/peers → view models, intents → backend calls (tested). UI crate now depends on `screenhop-app`.
-- ⬜ Bind the **Slint surfaces to the controller** at runtime + run the live mesh event loop (replace the preview's mock data).
+- ✅ **Controller + bind layer + data-driven tray**: the Slint tray reads `AppWindow` inputs (monitors / peers / presets / online / degraded), and its `switch` / `apply-preset` callbacks are overridable from Rust. `bind` maps Controller view models → Slint structs with index↔id translation (tested).
+- ✅ **`--live` mode** (`screenhop-ui -- --live`): enumerates this machine's real DDC/CI monitors and drives the tray through the production Controller → bind path — shows your actual panels + their state (read-only).
+- ⬜ Wire the **live mesh loop + real actuation**: start a `Node` (discovery + serve) and a `LocalActuator` (ddc driver + calibration), and route the tray's `switch` / `apply-preset` over the mesh. (Today `--live` shows the honest in-flight state and logs that routing/calibration aren't wired.)
+- ⬜ **Onboarding** flow (pair / calibrate cold-start / label) wired to the wizard surfaces.
 - ⬜ **Claude Design** review/approval of the mockups; confirm shipped UI **matches** them (D12).
 - ⬜ **Onboarding ≤ 10 min** on a 2-PC rig; capture the **soak §4.7 numbers** via the harness.
 
@@ -52,5 +54,5 @@ Legend: ✅ done in code (tested) · ⬜ needs you (hardware / LAN / GUI / decis
 ```sh
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test  --workspace      # 121 passed
+cargo test  --workspace      # 125 passed
 ```

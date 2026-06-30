@@ -59,9 +59,11 @@ This is a **pre-1.0, in-progress** project, built and developed in the open.
   calibration, the encrypted LAN mesh + discovery, orchestration (routing, presets, reconciliation,
   stranded / DDC-disabled / blind states), a measurement harness, and a backend-facing UI
   controller — **121 passing tests**, with `cargo fmt`, `clippy -D warnings`, and a CI workflow.
-- 🚧 **Not yet a finished installable app.** The Slint UI still needs to be **wired to the backend at
-  runtime**, the **installer/autostart** isn't built, and several things need **real-hardware /
-  real-LAN verification** (pull-to-self across panels, mDNS on a LAN, onboarding & soak numbers).
+- 🚧 **Not yet a finished installable app.** The tray is now **data-driven** and a `--live` mode
+  renders your **real monitors** through the production controller, but it still needs the **live
+  mesh + actuation loop** wired in, the **installer/autostart** isn't built, and several things need
+  **real-hardware / real-LAN verification** (pull-to-self across panels, mDNS on a LAN, onboarding &
+  soak numbers).
 
 The exact "done in code vs. needs verification" breakdown lives in
 [docs/REMAINING-CHECKLIST.md](docs/REMAINING-CHECKLIST.md). The full product definition, architecture,
@@ -96,6 +98,13 @@ cargo run -p screenhop-spike -- list    # just enumerate panels
 ```sh
 cargo run -p screenhop-ui -- --screen deskmap --dark
 cargo run -p screenhop-ui -- --shot out.png --screen flyout
+```
+
+**Live view** — drive the tray from *your* real monitors (read-only today; the mesh + actuation
+loop is in progress):
+
+```sh
+cargo run -p screenhop-ui -- --live
 ```
 
 ## Architecture

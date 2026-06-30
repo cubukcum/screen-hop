@@ -4787,6 +4787,7 @@ dependencies = [
  "image",
  "screenhop-app",
  "screenhop-core",
+ "screenhop-ddc",
  "screenhop-state",
  "slint",
  "slint-build",
