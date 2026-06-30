@@ -35,4 +35,10 @@ Interactive menu → **option 3**, on the machine reachable via the *non-active*
 
 **PASS** → primary path works on this panel. **FAIL** → that panel needs the push-release fallback; record the model.
 
-> Validated **PASS** on the maintainer's Windows + AOC 27P2DG5 setup.
+At the end of the test the spike offers to record a **formal verdict row** and appends it to
+[`docs/hardware/pull-to-self-verdicts.md`](../../docs/hardware/pull-to-self-verdicts.md) — the
+authoritative M0 go/no-go log. M0 closes only once **≥ 2 distinct rigs** are recorded there and a
+go/no-go is written.
+
+> Prior informal result: **PASS** on the maintainer's Windows + AOC 27P2DG5 setup — now tracked
+> (and pending formal re-capture) in the verdict log linked above.
