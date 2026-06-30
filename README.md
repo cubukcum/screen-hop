@@ -62,7 +62,7 @@ This is a **pre-1.0, in-progress** project, built and developed in the open.
 - ✅ **The engine + agent are implemented and tested.** Domain core + soft-brick guard, monitor
   identity & calibration, the encrypted LAN mesh + discovery, orchestration (routing, presets,
   reconciliation, stranded / DDC-disabled / blind states), persistence, and the **live agent** that
-  routes a tray click into a real DDC switch — **139 passing tests**, `cargo fmt` + `clippy -D
+  routes a tray click into a real DDC switch — **142 passing tests**, `cargo fmt` + `clippy -D
   warnings` clean, with CI (including a no-admin Windows installer build).
 - 🚧 **Validated on one rig so far.** Still in progress: **broader hardware coverage** (more panels /
   GPUs), the in-window onboarding wizard (today: `mesh-secret` file + `--calibrate`), the

@@ -190,6 +190,24 @@ fn identified_monitors(
     out
 }
 
+/// A compact, tray-friendly label for a peer segment. The segment is narrow, so prefer the peer's
+/// announced friendly name (hostname or configured `name`), truncating with an ellipsis if it's
+/// long; fall back to a short id prefix when no name was announced yet (better than a 64-char hex
+/// blob). Kept pure so it can be unit-tested without a running mesh.
+fn short_peer_label(name: &str, id: &str) -> String {
+    const MAX: usize = 12;
+    let name = name.trim();
+    if name.is_empty() {
+        return id.chars().take(6).collect();
+    }
+    if name.chars().count() > MAX {
+        let head: String = name.chars().take(MAX - 1).collect();
+        format!("{head}…")
+    } else {
+        name.to_string()
+    }
+}
+
 /// Read a panel's input, retrying a few times — DDC reads are flaky on some GPU backends (the
 /// first attempt often fails even when the panel is fine), so a one-shot read drops good panels.
 fn read_input_retry(driver: &mut DdcHiDriver, monitor_id: &str) -> Option<u32> {
@@ -435,14 +453,7 @@ fn run_live() -> Result<(), slint::PlatformError> {
             let mut peer_labels = vec!["This PC".to_string()];
             for pv in controller.peer_views(now) {
                 if pv.id != me {
-                    // The tray segment is narrow; show a short label (friendly name, else a short
-                    // id prefix) so it fits and the right segment is clickable.
-                    let raw = if pv.name.is_empty() {
-                        pv.id.clone()
-                    } else {
-                        pv.name.clone()
-                    };
-                    peer_labels.push(raw.chars().take(8).collect::<String>());
+                    peer_labels.push(short_peer_label(&pv.name, &pv.id));
                     peer_ids.push(pv.id);
                 }
             }
@@ -577,4 +588,27 @@ fn run_preview(args: &[String]) -> Result<(), slint::PlatformError> {
     }
 
     app.run()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::short_peer_label;
+
+    #[test]
+    fn short_label_prefers_a_short_name_verbatim() {
+        assert_eq!(short_peer_label("Couch", "abc123def456"), "Couch");
+    }
+
+    #[test]
+    fn short_label_truncates_long_names_with_an_ellipsis() {
+        let out = short_peer_label("DESKTOP-LONGHOSTNAME", "id");
+        assert_eq!(out, "DESKTOP-LON…");
+        assert_eq!(out.chars().count(), 12);
+    }
+
+    #[test]
+    fn short_label_falls_back_to_a_short_id_prefix_when_unnamed() {
+        // Better a 6-char prefix than a 64-char hex blob in a narrow tray segment.
+        assert_eq!(short_peer_label("   ", "0123456789abcdef"), "012345");
+    }
 }
