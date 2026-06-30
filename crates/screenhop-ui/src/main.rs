@@ -109,19 +109,20 @@ fn run_calibrate() -> std::io::Result<()> {
     let mut cal = persist::load_calibration(&config_dir)?;
 
     let mut driver = DdcHiDriver::enumerate();
+    let monitors = identified_monitors(&driver, &cfg.monitor_aliases);
     driver.remap_ids(|m| effective_id(m, &cfg.monitor_aliases));
-    let monitors = driver.monitors();
     if monitors.is_empty() {
-        println!("No DDC/CI monitors found. Enable DDC/CI in each monitor's OSD and retry.");
+        println!(
+            "No identifiable DDC/CI monitors found. Enable DDC/CI in the OSD; for a monitor behind \
+             a hub/dock that hides its identity, add a monitor_aliases entry (see --monitors)."
+        );
         return Ok(());
     }
     println!("Calibrating as peer {me} (make sure THIS PC is the shown input on each panel):");
-    for m in &monitors {
-        let id = m.id.clone(); // effective id (alias/EDID/handle) — the driver answers to it now
-        let label = m.model.clone().unwrap_or_else(|| id.clone());
-        match read_input_retry(&mut driver, &id) {
+    for (id, label) in &monitors {
+        match read_input_retry(&mut driver, id) {
             Some(v) => {
-                cal.record(&me, &id, v);
+                cal.record(&me, id, v);
                 println!("  [ok]   {label} ({id}) = 0x{v:02X}");
             }
             None => println!(
@@ -147,6 +148,34 @@ fn effective_id(m: &MonitorInfo, aliases: &HashMap<String, String>) -> String {
         return target.clone();
     }
     m.monitor_id().unwrap_or_else(|| m.id.clone())
+}
+
+/// The de-duplicated list of `(effective_id, label)` to show + drive: only monitors with a real
+/// cross-PC identity (an EDID `monitor_id` or a user alias), collapsed by effective id so the same
+/// physical panel seen via multiple GPU backends (WinApi + Nvapi) is one row. Anonymous handles
+/// (no EDID, no alias) are omitted — they can't be correlated across PCs; alias one (see
+/// `--monitors`) to include it. Call this BEFORE `remap_ids` (it reads the original handle ids).
+fn identified_monitors(
+    driver: &DdcHiDriver,
+    aliases: &HashMap<String, String>,
+) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for m in driver.monitors() {
+        if !(aliases.contains_key(&m.id) || m.monitor_id().is_some()) {
+            continue; // anonymous handle — no stable cross-PC identity
+        }
+        let eid = effective_id(&m, aliases);
+        if !seen.insert(eid.clone()) {
+            continue; // same physical monitor via another backend
+        }
+        let mfr = m.manufacturer.clone().unwrap_or_default();
+        let model = m.model.clone().unwrap_or_else(|| "Monitor".to_string());
+        let label = format!("{mfr} {model}").trim().to_string();
+        let label = if label.is_empty() { eid.clone() } else { label };
+        out.push((eid, label));
+    }
+    out
 }
 
 /// Read a panel's input, retrying a few times — DDC reads are flaky on some GPU backends (the
@@ -237,19 +266,8 @@ fn run_live() -> Result<(), slint::PlatformError> {
         let _ = quirks.load_local(&config_dir.join("quirks-local.json"));
         std::thread::spawn(move || {
             let mut driver = DdcHiDriver::enumerate();
+            let mons = identified_monitors(&driver, &aliases);
             driver.remap_ids(|m| effective_id(m, &aliases));
-            let mons: Vec<(String, String)> = driver
-                .monitors()
-                .iter()
-                .map(|m| {
-                    let id = m.id.clone(); // effective id (alias/EDID/handle)
-                    let mfr = m.manufacturer.clone().unwrap_or_default();
-                    let model = m.model.clone().unwrap_or_else(|| "Monitor".to_string());
-                    let label = format!("{mfr} {model}").trim().to_string();
-                    let label = if label.is_empty() { id.clone() } else { label };
-                    (id, label)
-                })
-                .collect();
             let _ = mon_tx.send(mons);
 
             let exec = SwitchExecutor::new(driver, RealDelayer, RealClock::default());

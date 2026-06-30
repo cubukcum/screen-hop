@@ -294,20 +294,23 @@ fn route_switch(
         return;
     }
     match session.recv() {
-        Ok(Message::SwitchResult { outcome, .. }) => {
+        Ok(Message::SwitchResult {
+            outcome, observed, ..
+        }) => {
+            eprintln!(
+                "screen-hop: switch {monitor_id} -> {target_peer_id}: {outcome} (observed={observed:?})"
+            );
             if outcome == "success" || outcome == "assumed-success" {
                 lock(&node.state()).ownership.observe(
                     monitor_id,
                     Some(target_peer_id.to_owned()),
                     wall_ms(),
                 );
-            } else {
-                eprintln!("screen-hop: switch {monitor_id} -> {target_peer_id}: {outcome}");
             }
         }
         Ok(other) => eprintln!("screen-hop: unexpected reply to switch: {other:?}"),
         Err(RecvError::Io(_)) => eprintln!("screen-hop: no switch result (timeout/disconnect)"),
-        Err(_) => {}
+        Err(_) => eprintln!("screen-hop: switch reply decode error"),
     }
 }
 

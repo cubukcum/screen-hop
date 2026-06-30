@@ -437,6 +437,11 @@ fn handle_message(
             } // release the state lock before the slow DDC write
 
             let report = lock_or_recover(actuator).switch_to_self(&monitor_id);
+            eprintln!(
+                "screen-hop: actuate {monitor_id} -> {} (observed={:?})",
+                outcome_code(report.outcome),
+                report.observed
+            );
 
             {
                 let mut st = lock_or_recover(state);
