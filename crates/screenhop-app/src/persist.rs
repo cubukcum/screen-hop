@@ -24,14 +24,20 @@ pub const SECRET_FILE: &str = "mesh-secret";
 pub const CONFIG_FILE: &str = "config.json";
 pub const PINS_FILE: &str = "pins.json";
 
-/// Agent settings that aren't secret (safe to read/log/share).
+/// Agent settings that aren't secret (safe to read/log/share). `#[serde(default)]` so a
+/// hand-written, partial `config.json` (e.g. only `monitor_aliases`) still loads — missing fields
+/// fall back to the defaults below.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AgentConfig {
     pub port: u16,
     pub name: String,
     pub can_actuate: bool,
-    #[serde(default)]
     pub manual_hosts: Vec<String>,
+    /// Force a local monitor handle id (as printed by `--monitors`) to a shared monitor id, so two
+    /// PCs agree on a monitor whose EDID identity is hidden on one of them (e.g. behind a USB-C
+    /// hub / dock that strips EDID). Key = local id on THIS PC, value = the shared id both PCs use.
+    pub monitor_aliases: HashMap<String, String>,
 }
 
 impl Default for AgentConfig {
@@ -41,6 +47,7 @@ impl Default for AgentConfig {
             name: "screen-hop".into(),
             can_actuate: true,
             manual_hosts: Vec::new(),
+            monitor_aliases: HashMap::new(),
         }
     }
 }
@@ -216,11 +223,30 @@ mod tests {
             name: "Desk".into(),
             can_actuate: false,
             manual_hosts: vec!["10.0.0.5:7777".into()],
+            ..Default::default()
         };
         save_config(&dir, &cfg).unwrap();
         let loaded = load_config(&dir).unwrap();
         assert_eq!(loaded.port, 9000);
         assert_eq!(loaded.manual_hosts, vec!["10.0.0.5:7777".to_string()]);
+    }
+
+    #[test]
+    fn partial_config_loads_with_defaults_and_aliases() {
+        let dir = tmp_dir();
+        // A hand-written config.json with ONLY an alias — the rest must fall back to defaults.
+        fs::write(
+            dir.join(CONFIG_FILE),
+            r#"{ "monitor_aliases": { "-Monitor-#0": "shared-aoc" } }"#,
+        )
+        .unwrap();
+        let cfg = load_config(&dir).unwrap();
+        assert_eq!(cfg.port, 7777); // default filled in
+        assert!(cfg.can_actuate);
+        assert_eq!(
+            cfg.monitor_aliases.get("-Monitor-#0").map(String::as_str),
+            Some("shared-aoc")
+        );
     }
 
     #[test]

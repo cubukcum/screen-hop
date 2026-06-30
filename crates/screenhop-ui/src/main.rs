@@ -19,7 +19,7 @@ use screenhop_app::{
     MeshState, Node, UiIntent,
 };
 use screenhop_core::{MonitorDriver, RealClock, RealDelayer, SwitchExecutor};
-use screenhop_ddc::DdcHiDriver;
+use screenhop_ddc::{DdcHiDriver, MonitorInfo};
 use screenhop_identity::CalibrationStore;
 use screenhop_net::PeerIdentity;
 use screenhop_quirks::QuirksDb;
@@ -89,6 +89,12 @@ fn run_monitors() {
             None => println!("    reads 0x60   : NO"),
         }
     }
+    println!();
+    println!(
+        "If a monitor here has no identity (e.g. it's behind a USB-C hub/dock) but another PC"
+    );
+    println!("sees its real id, force them to match by editing config.json in the config dir:");
+    println!("  {{ \"monitor_aliases\": {{ \"<local id on THIS pc>\": \"<shared id>\" }} }}");
 }
 
 /// Calibration (one-shot CLI). With THIS PC currently displayed on the monitors you want to use,
@@ -99,9 +105,11 @@ fn run_calibrate() -> std::io::Result<()> {
     let config_dir = persist::ensure_config_dir()?;
     let identity = persist::load_or_create_identity(&config_dir)?;
     let me = identity.peer_id();
+    let cfg = persist::load_config(&config_dir)?;
     let mut cal = persist::load_calibration(&config_dir)?;
 
     let mut driver = DdcHiDriver::enumerate();
+    driver.remap_ids(|m| effective_id(m, &cfg.monitor_aliases));
     let monitors = driver.monitors();
     if monitors.is_empty() {
         println!("No DDC/CI monitors found. Enable DDC/CI in each monitor's OSD and retry.");
@@ -109,7 +117,7 @@ fn run_calibrate() -> std::io::Result<()> {
     }
     println!("Calibrating as peer {me} (make sure THIS PC is the shown input on each panel):");
     for m in &monitors {
-        let id = m.monitor_id().unwrap_or_else(|| m.id.clone());
+        let id = m.id.clone(); // effective id (alias/EDID/handle) — the driver answers to it now
         let label = m.model.clone().unwrap_or_else(|| id.clone());
         match read_input_retry(&mut driver, &id) {
             Some(v) => {
@@ -128,6 +136,17 @@ fn run_calibrate() -> std::io::Result<()> {
         config_dir.join("calibration.json").display()
     );
     Ok(())
+}
+
+/// The id used for a monitor everywhere except the raw OS handle: a user **alias** wins (for a panel
+/// whose EDID identity is hidden on this PC, e.g. behind a USB-C hub), else the stable EDID id, else
+/// the provisional handle id. Re-keying the driver to this id makes the mesh, calibration, and the
+/// DDC handle all agree on one id.
+fn effective_id(m: &MonitorInfo, aliases: &HashMap<String, String>) -> String {
+    if let Some(target) = aliases.get(&m.id) {
+        return target.clone();
+    }
+    m.monitor_id().unwrap_or_else(|| m.id.clone())
 }
 
 /// Read a panel's input, retrying a few times — DDC reads are flaky on some GPU backends (the
@@ -213,15 +232,17 @@ fn run_live() -> Result<(), slint::PlatformError> {
     {
         let peer_id = identity.peer_id();
         let calibration = calibration.clone();
+        let aliases = cfg.monitor_aliases.clone();
         let mut quirks = QuirksDb::with_shipped();
         let _ = quirks.load_local(&config_dir.join("quirks-local.json"));
         std::thread::spawn(move || {
-            let driver = DdcHiDriver::enumerate();
+            let mut driver = DdcHiDriver::enumerate();
+            driver.remap_ids(|m| effective_id(m, &aliases));
             let mons: Vec<(String, String)> = driver
                 .monitors()
                 .iter()
                 .map(|m| {
-                    let id = m.monitor_id().unwrap_or_else(|| m.id.clone());
+                    let id = m.id.clone(); // effective id (alias/EDID/handle)
                     let mfr = m.manufacturer.clone().unwrap_or_default();
                     let model = m.model.clone().unwrap_or_else(|| "Monitor".to_string());
                     let label = format!("{mfr} {model}").trim().to_string();

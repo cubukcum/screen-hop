@@ -81,6 +81,20 @@ impl DdcHiDriver {
         &self.ids
     }
 
+    /// Replace each handle's lookup id (the key used by read/write/availability). Callers use this
+    /// to address monitors by a stable EDID id or a user-configured alias instead of the provisional
+    /// per-handle id — important because the provisional id is what the OS handle answers to, but
+    /// the mesh keys everything by the cross-PC id. `f` receives each monitor's current info and
+    /// returns the new id to use for that handle.
+    pub fn remap_ids(&mut self, f: impl Fn(&MonitorInfo) -> String) {
+        let monitors = self.monitors();
+        for (i, m) in monitors.iter().enumerate() {
+            if let Some(slot) = self.ids.get_mut(i) {
+                *slot = f(m);
+            }
+        }
+    }
+
     fn index_of(&self, monitor_id: &str) -> Option<usize> {
         self.ids.iter().position(|x| x == monitor_id)
     }
