@@ -9,6 +9,9 @@
 //! carries the latest timestamp, which is what lets the observed hardware truth win over stale
 //! gossip (`OwnershipMap::observe`).
 
+use std::collections::HashSet;
+
+use screenhop_identity::CalibrationStore;
 use screenhop_state::OwnershipMap;
 
 /// What a live read of one panel found.
@@ -72,6 +75,55 @@ pub fn reconcile_all(
         .collect()
 }
 
+/// Map one live `0x60` read of `monitor_id` into a [`LiveRead`], or `None` when the read is
+/// inconclusive and the cached state should be left untouched.
+///
+/// - A **successful** read maps the value back to its owner via [`CalibrationStore::owner_for`]; an
+///   unrecognized value is `Owner(None)` (the panel is driven, but not by a peer we can identify).
+/// - A **failed** read concludes [`LiveRead::Stranded`] only when the *believed owner is offline*.
+///   A failed read on an unowned / not-yet-calibrated panel is transient/unknown — returning `None`
+///   so a fresh mesh never false-strands a working monitor.
+///
+/// Note: this is read-only — the caller does the (brief) locked `reconcile_*` afterwards, so the
+/// slow DDC read never happens while the `MeshState` lock is held.
+pub fn read_to_live_read(
+    ownership: &OwnershipMap,
+    calibration: &CalibrationStore,
+    online_peers: &HashSet<String>,
+    monitor_id: &str,
+    read: Option<u32>,
+) -> Option<LiveRead> {
+    match read {
+        Some(value) => Some(LiveRead::Owner(calibration.owner_for(monitor_id, value))),
+        None => match ownership.owner(monitor_id) {
+            Some(owner) if !online_peers.contains(owner) => Some(LiveRead::Stranded),
+            _ => None,
+        },
+    }
+}
+
+/// Reconcile a batch of raw live reads `(monitor_id, Option<value>)` taken at `now_ms`: map each
+/// through [`read_to_live_read`], skip the inconclusive ones, and apply the rest. Returns the
+/// externally-changed monitors. The caller collects the reads WITHOUT holding any lock, then calls
+/// this under a brief `MeshState` lock.
+pub fn reconcile_reads(
+    map: &mut OwnershipMap,
+    calibration: &CalibrationStore,
+    online_peers: &HashSet<String>,
+    reads: &[(String, Option<u32>)],
+    now_ms: u64,
+) -> Vec<ReconcileChange> {
+    let mut changes = Vec::new();
+    for (id, read) in reads {
+        if let Some(live) = read_to_live_read(map, calibration, online_peers, id, *read) {
+            if let Some(change) = reconcile_one(map, id, &live, now_ms) {
+                changes.push(change);
+            }
+        }
+    }
+    changes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,6 +164,66 @@ mod tests {
         assert_eq!(change.previous_owner, Some("A".into()));
         assert_eq!(change.new_owner, None);
         assert_eq!(map.state("m1"), OwnershipState::DdcDisabled);
+    }
+
+    fn online(p: &[&str]) -> HashSet<String> {
+        p.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn read_maps_value_to_owner_via_calibration() {
+        let map = OwnershipMap::new();
+        let mut cal = CalibrationStore::new();
+        cal.record("A", "m1", 0x0F);
+        assert_eq!(
+            read_to_live_read(&map, &cal, &online(&["A"]), "m1", Some(0x0F)),
+            Some(LiveRead::Owner(Some("A".to_string())))
+        );
+        // A read of a value no peer has calibrated -> driven but unmapped.
+        assert_eq!(
+            read_to_live_read(&map, &cal, &online(&["A"]), "m1", Some(0x77)),
+            Some(LiveRead::Owner(None))
+        );
+    }
+
+    #[test]
+    fn failed_read_strands_only_when_the_owner_is_offline() {
+        let mut map = OwnershipMap::new();
+        map.merge("m1", Some("A".into()), 100);
+        let cal = CalibrationStore::new();
+        // Owner A is offline + the read failed -> stranded.
+        assert_eq!(
+            read_to_live_read(&map, &cal, &online(&["B"]), "m1", None),
+            Some(LiveRead::Stranded)
+        );
+        // Owner A is online -> inconclusive, leave the cache alone.
+        assert_eq!(
+            read_to_live_read(&map, &cal, &online(&["A"]), "m1", None),
+            None
+        );
+        // Unowned / uncalibrated panel + failed read -> NOT stranded (fresh-mesh safety).
+        assert_eq!(
+            read_to_live_read(&map, &cal, &online(&["A"]), "unowned", None),
+            None
+        );
+    }
+
+    #[test]
+    fn reconcile_reads_applies_only_conclusive_changes() {
+        let mut map = OwnershipMap::new();
+        map.merge("m1", Some("A".into()), 100);
+        map.merge("m2", Some("A".into()), 100);
+        let mut cal = CalibrationStore::new();
+        cal.record("B", "m1", 0x0F); // B's calibrated value on m1
+        let reads = vec![
+            ("m1".to_string(), Some(0x0F)), // now shows B's value -> A→B change
+            ("m2".to_string(), None),       // failed read, owner A online -> skipped
+        ];
+        let changes = reconcile_reads(&mut map, &cal, &online(&["A", "B"]), &reads, 500);
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].monitor_id, "m1");
+        assert_eq!(map.owner("m1"), Some("B"));
+        assert_eq!(map.owner("m2"), Some("A")); // unchanged
     }
 
     #[test]

@@ -46,6 +46,21 @@ impl CalibrationStore {
             .into_iter()
             .collect()
     }
+
+    /// Reverse lookup: which peer (if any) has `value` confirmed for `monitor_id`. Reconciliation
+    /// uses this to map a live `0x60` read back to the owner that value belongs to. Iterates in a
+    /// stable order (sorted by peer id) so a tie resolves deterministically. This stays within D4 —
+    /// it only *reads* the per-peer values, it never lets one peer use another's value.
+    pub fn owner_for(&self, monitor_id: &str, value: u32) -> Option<String> {
+        let mut owners: Vec<&String> = self
+            .values
+            .iter()
+            .filter(|(_, mons)| mons.get(monitor_id) == Some(&value))
+            .map(|(peer, _)| peer)
+            .collect();
+        owners.sort();
+        owners.first().map(|s| (*s).clone())
+    }
 }
 
 #[cfg(test)]
@@ -84,5 +99,16 @@ mod tests {
         let set = s.confirmed_set("peerA", "mon1");
         assert!(set.contains(&0x0F));
         assert_eq!(set.len(), 1);
+    }
+
+    #[test]
+    fn owner_for_reverse_maps_value_to_peer() {
+        let mut s = CalibrationStore::new();
+        s.record("peerA", "mon1", 0x0F);
+        s.record("peerB", "mon1", 0x11);
+        assert_eq!(s.owner_for("mon1", 0x0F).as_deref(), Some("peerA"));
+        assert_eq!(s.owner_for("mon1", 0x11).as_deref(), Some("peerB"));
+        assert_eq!(s.owner_for("mon1", 0x99), None); // no peer has this value
+        assert_eq!(s.owner_for("mon2", 0x0F), None); // value is for mon1, not mon2
     }
 }

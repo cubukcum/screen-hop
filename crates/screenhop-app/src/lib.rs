@@ -19,4 +19,6 @@ pub use orchestration::{
     PresetOutcome, SwitchOp, SwitchOpResult, SwitchPlan,
 };
 pub use peers::{PeerPresence, PeerRegistry};
-pub use reconcile::{reconcile_all, reconcile_one, LiveRead, ReconcileChange};
+pub use reconcile::{
+    read_to_live_read, reconcile_all, reconcile_one, reconcile_reads, LiveRead, ReconcileChange,
+};
