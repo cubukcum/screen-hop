@@ -18,7 +18,9 @@ fn main() {
     if driver.is_empty() {
         println!("No DDC/CI-capable monitors found on this machine.");
         println!("If you DO have external monitors: enable DDC/CI in their OSD;");
-        println!("on Linux, ensure the i2c-dev module is loaded and you have /dev/i2c-* permissions.");
+        println!(
+            "on Linux, ensure the i2c-dev module is loaded and you have /dev/i2c-* permissions."
+        );
         return;
     }
 
@@ -74,7 +76,9 @@ fn print_table(driver: &mut DdcHiDriver) {
 fn interactive(driver: &mut DdcHiDriver) {
     loop {
         print_table(driver);
-        println!("[1] Read input   [2] Set input (DANGER)   [3] Guided pull-to-self test   [0] Exit");
+        println!(
+            "[1] Read input   [2] Set input (DANGER)   [3] Guided pull-to-self test   [0] Exit"
+        );
         prompt("> ");
         match read_line().trim() {
             "1" => {
@@ -105,7 +109,9 @@ fn cmd_set(driver: &mut DdcHiDriver) {
         println!("bad hex value");
         return;
     };
-    println!("   NOTE: this is the raw M0 spike — it writes the value you typed with NO soft-brick");
+    println!(
+        "   NOTE: this is the raw M0 spike — it writes the value you typed with NO soft-brick"
+    );
     println!("         guard (no confirmed-set / blocked-value check). That is intentional for");
     println!("         hardware probing; the real agent only ever writes self-calibrated values.");
     if !confirm(&format!(
@@ -123,6 +129,16 @@ fn guided_pull_test(driver: &mut DdcHiDriver) {
     println!("Verifies THIS machine can switch a monitor TO ITSELF over DDC/CI while it is NOT the shown input.");
     let Some(i) = pick(driver) else { return };
     let id = driver.monitors()[i].id.clone();
+
+    // Capture panel identity up front so we can emit a formal verdict row at the end.
+    let (mfr, model, mid) = {
+        let m = &driver.monitors()[i];
+        (
+            m.manufacturer.clone().unwrap_or_default(),
+            m.model.clone().unwrap_or_else(|| "Generic Monitor".into()),
+            m.monitor_id().unwrap_or_else(|| "(no identity)".into()),
+        )
+    };
 
     println!();
     println!("STEP 1.  Make sure monitor #{i} is CURRENTLY SHOWING THIS machine.");
@@ -150,17 +166,121 @@ fn guided_pull_test(driver: &mut DdcHiDriver) {
     println!();
     if switched {
         println!("RESULT: [PASS] pull-to-self WORKS on this monitor.");
-        println!("        screen-hop's primary path is viable for this panel. (M0 = go for this panel.)");
+        println!(
+            "        screen-hop's primary path is viable for this panel. (M0 = go for this panel.)"
+        );
     } else {
         println!("RESULT: [FAIL] pull-to-self did NOT work on this monitor.");
         println!("        This panel likely needs the push-release fallback, or only honors DDC over its active input.");
     }
+
+    record_verdict(
+        &mfr,
+        &model,
+        &mid,
+        my_value,
+        switched,
+        &format!("{result:?}"),
+    );
+}
+
+/// Offer to record a formal M0 verdict row, print it, and append it to the verdict log
+/// (docs/hardware/pull-to-self-verdicts.md) when that file can be located from the CWD.
+fn record_verdict(mfr: &str, model: &str, mid: &str, value: u32, pass: bool, write_result: &str) {
+    println!();
+    if !confirm("Record this as a formal M0 verdict row?") {
+        return;
+    }
+    prompt("Rig label (e.g. 'PC-A \u{b7} Win11 \u{b7} RTX 3060'): ");
+    let rig = read_line().trim().to_string();
+    prompt("Cable / port (e.g. 'DP', 'HDMI', 'USB-C'): ");
+    let cable = read_line().trim().to_string();
+    prompt("Date (YYYY-MM-DD), Enter to leave blank: ");
+    let date = read_line().trim().to_string();
+    prompt("Extra notes (Enter for none): ");
+    let notes = read_line().trim().to_string();
+
+    let date = if date.is_empty() {
+        "____-__-__".into()
+    } else {
+        date
+    };
+    let rig = if rig.is_empty() {
+        "(unspecified)".into()
+    } else {
+        rig
+    };
+    let cable = if cable.is_empty() {
+        "\u{2014}".into()
+    } else {
+        cable
+    };
+    let result = if pass { "PASS" } else { "FAIL" };
+    let mfr_model = format!("{} \u{b7} {}", mfr.trim(), model.trim());
+    let note_field = if notes.is_empty() {
+        format!("write={write_result}")
+    } else {
+        format!("write={write_result}; {notes}")
+    };
+    let row = format!(
+        "| {date} | {rig} | {mfr_model} | {mid} | {cable} | 0x{value:02X} | {result} | ~2.5s | {note_field} |"
+    );
+
+    println!();
+    println!("Verdict row (for docs/hardware/pull-to-self-verdicts.md):");
+    println!();
+    println!("{row}");
+    println!();
+    match append_verdict_row(&row) {
+        Some(path) => println!("   -> appended to {path}"),
+        None => {
+            println!("   -> could not locate the verdict log from here; paste the row in manually.")
+        }
+    }
+}
+
+/// Insert `row` directly below the `<!-- VERDICT-ROWS:` marker in the verdict log, searching a
+/// few CWD-relative candidate paths. Returns the path written, or None if the file wasn't found.
+fn append_verdict_row(row: &str) -> Option<String> {
+    const MARKER: &str = "<!-- VERDICT-ROWS:";
+    const CANDIDATES: [&str; 3] = [
+        "docs/hardware/pull-to-self-verdicts.md",
+        "../docs/hardware/pull-to-self-verdicts.md",
+        "../../docs/hardware/pull-to-self-verdicts.md",
+    ];
+    for path in CANDIDATES {
+        let p = std::path::Path::new(path);
+        if !p.exists() {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(p) else {
+            continue;
+        };
+        let Some(insert_at) = content
+            .find(MARKER)
+            .and_then(|start| content[start..].find('\n').map(|off| start + off + 1))
+        else {
+            continue;
+        };
+        let mut updated = String::with_capacity(content.len() + row.len() + 1);
+        updated.push_str(&content[..insert_at]);
+        updated.push_str(row);
+        updated.push('\n');
+        updated.push_str(&content[insert_at..]);
+        if std::fs::write(p, updated).is_ok() {
+            return Some(p.display().to_string());
+        }
+    }
+    None
 }
 
 // ---- small console helpers --------------------------------------------------
 
 fn pick(driver: &DdcHiDriver) -> Option<usize> {
-    prompt(&format!("monitor index (0-{}): ", driver.len().saturating_sub(1)));
+    prompt(&format!(
+        "monitor index (0-{}): ",
+        driver.len().saturating_sub(1)
+    ));
     match read_line().trim().parse::<usize>() {
         Ok(i) if i < driver.len() => Some(i),
         _ => {
