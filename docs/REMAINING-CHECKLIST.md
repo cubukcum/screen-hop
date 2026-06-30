@@ -1,7 +1,7 @@
 # What's done in code vs. what still needs you
 
 Every milestone M0–M6 now has its **code + automated tests** in place, and the live agent (mesh +
-actuation + calibration + reconcile) is wired (138 tests pass; `cargo fmt`, `cargo clippy
+actuation + calibration + reconcile) is wired (139 tests pass; `cargo fmt`, `cargo clippy
 -D warnings`, and `cargo build/test --workspace` all green locally). What remains is verification
 that genuinely needs **real hardware, a real LAN, a running GUI, or a human decision** — none of
 which can be faked in code or CI. This is that list.
@@ -63,7 +63,7 @@ Legend: ✅ done in code (tested) · ⬜ needs you (hardware / LAN / GUI / decis
 ```sh
 cargo fmt --all -- --check                          # clean
 cargo clippy --workspace --all-targets -- -D warnings  # clean
-cargo test  --workspace                             # 138 passed
+cargo test  --workspace                             # 139 passed
 ```
 Everything above the ⬜ lines compiles and (where logic) is unit-tested. The ⬜ items need your
 hardware / LAN / GUI / a human decision — see "your part" below.

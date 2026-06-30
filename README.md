@@ -55,15 +55,19 @@ about the limits:
 
 This is a **pre-1.0, in-progress** project, built and developed in the open.
 
+- ✅ **The core works on real hardware.** A tray click moves a shared monitor between two PCs —
+  **both directions, over the LAN mesh** — verified on an AOC 27P2DG5 across a laptop (HDMI) and a
+  desktop (DisplayPort) on 2026-06-30. mDNS discovery brings the two PCs up as "2 online" on a real
+  LAN, and the switch fires real DDC/CI both ways.
 - ✅ **The engine + agent are implemented and tested.** Domain core + soft-brick guard, monitor
   identity & calibration, the encrypted LAN mesh + discovery, orchestration (routing, presets,
   reconciliation, stranded / DDC-disabled / blind states), persistence, and the **live agent** that
-  routes a tray click into a real DDC switch — **138 passing tests**, `cargo fmt` + `clippy -D
+  routes a tray click into a real DDC switch — **139 passing tests**, `cargo fmt` + `clippy -D
   warnings` clean, with CI (including a no-admin Windows installer build).
-- 🚧 **Not yet verified end-to-end.** The agent (`--live`), calibration (`--calibrate`), and the
-  installer are all built, but the real proof — **two PCs + a shared monitor, a tray click moving
-  the panel** — needs your hardware, plus mDNS on a real LAN, the in-window onboarding wizard, the
-  active-session guard, and design sign-off. See [docs/REMAINING-CHECKLIST.md](docs/REMAINING-CHECKLIST.md).
+- 🚧 **Validated on one rig so far.** Still in progress: **broader hardware coverage** (more panels /
+  GPUs), the in-window onboarding wizard (today: `mesh-secret` file + `--calibrate`), the
+  active-console-session guard, code-signing, and confirming CI on GitHub's runners. See
+  [docs/REMAINING-CHECKLIST.md](docs/REMAINING-CHECKLIST.md).
 
 The exact "done in code vs. needs verification" breakdown lives in
 [docs/REMAINING-CHECKLIST.md](docs/REMAINING-CHECKLIST.md). The full product definition, architecture,

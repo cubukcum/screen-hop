@@ -2,9 +2,11 @@
 
 ## v0.1.0-alpha — first agent build (pre-release)
 
-> ⚠️ **Pre-release / alpha.** The full agent is implemented and all automated tests pass, but it has
-> **not yet been verified on real hardware** (a two-PC, shared-monitor switch). For testers and
-> contributors — not for production use.
+> ⚠️ **Pre-release / alpha.** The core feature is **verified working on real hardware**: a tray click
+> moves a shared monitor between two PCs, both directions, over the LAN mesh (validated on an AOC
+> 27P2DG5 across a laptop/HDMI + desktop/DisplayPort). That's **one panel on one setup** so far —
+> broader hardware coverage, the in-window onboarding wizard, and the items below are still in
+> progress. For testers and contributors; not yet production-hardened.
 
 ### Added
 - **Live agent** (`screenhop-ui --live`): joins the LAN mesh and routes a tray click into a real
@@ -25,7 +27,9 @@
   license, and contributor + security docs.
 
 ### Known limitations / not yet done
-- **Not verified end-to-end on real hardware** — the core reason this is an alpha.
+- **Verified on one panel / one 2-PC setup so far** — needs broader hardware coverage.
+- Monitors behind a **USB-C hub/dock** that hides EDID need a `monitor_aliases` entry (see
+  `--monitors`); a panel whose identified handle is read-only on one PC may need the alias too.
 - In-window onboarding wizard not wired (use the `mesh-secret` file + `--calibrate`).
 - No active-console-session guard yet — don't rely on it over RDP or a locked screen (D11).
 - `WM_DISPLAYCHANGE` hook not wired (the periodic sweep covers external changes within ~4 s).
