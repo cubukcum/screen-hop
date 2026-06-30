@@ -55,15 +55,15 @@ about the limits:
 
 This is a **pre-1.0, in-progress** project, built and developed in the open.
 
-- ✅ **The engine is implemented and tested.** Domain core + soft-brick guard, monitor identity &
-  calibration, the encrypted LAN mesh + discovery, orchestration (routing, presets, reconciliation,
-  stranded / DDC-disabled / blind states), a measurement harness, and a backend-facing UI
-  controller — **121 passing tests**, with `cargo fmt`, `clippy -D warnings`, and a CI workflow.
-- 🚧 **Not yet a finished installable app.** The tray is now **data-driven** and a `--live` mode
-  renders your **real monitors** through the production controller, but it still needs the **live
-  mesh + actuation loop** wired in, the **installer/autostart** isn't built, and several things need
-  **real-hardware / real-LAN verification** (pull-to-self across panels, mDNS on a LAN, onboarding &
-  soak numbers).
+- ✅ **The engine + agent are implemented and tested.** Domain core + soft-brick guard, monitor
+  identity & calibration, the encrypted LAN mesh + discovery, orchestration (routing, presets,
+  reconciliation, stranded / DDC-disabled / blind states), persistence, and the **live agent** that
+  routes a tray click into a real DDC switch — **138 passing tests**, `cargo fmt` + `clippy -D
+  warnings` clean, with CI (including a no-admin Windows installer build).
+- 🚧 **Not yet verified end-to-end.** The agent (`--live`), calibration (`--calibrate`), and the
+  installer are all built, but the real proof — **two PCs + a shared monitor, a tray click moving
+  the panel** — needs your hardware, plus mDNS on a real LAN, the in-window onboarding wizard, the
+  active-session guard, and design sign-off. See [docs/REMAINING-CHECKLIST.md](docs/REMAINING-CHECKLIST.md).
 
 The exact "done in code vs. needs verification" breakdown lives in
 [docs/REMAINING-CHECKLIST.md](docs/REMAINING-CHECKLIST.md). The full product definition, architecture,
@@ -100,11 +100,12 @@ cargo run -p screenhop-ui -- --screen deskmap --dark
 cargo run -p screenhop-ui -- --shot out.png --screen flyout
 ```
 
-**Live view** — drive the tray from *your* real monitors (read-only today; the mesh + actuation
-loop is in progress):
+**Run the agent** — calibrate once (with this PC shown on the panels), then go live. With the same
+`mesh-secret` on each PC, a tray click moves a monitor between them:
 
 ```sh
-cargo run -p screenhop-ui -- --live
+cargo run -p screenhop-ui -- --calibrate   # learn this PC's input value per panel
+cargo run -p screenhop-ui -- --live        # join the mesh + drive the tray
 ```
 
 ## Architecture

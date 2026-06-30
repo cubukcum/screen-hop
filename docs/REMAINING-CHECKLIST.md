@@ -1,9 +1,10 @@
 # What's done in code vs. what still needs you
 
-Every milestone M0–M6 now has its **code + automated tests** in place (121 tests pass; `cargo fmt`,
-`cargo clippy -D warnings`, and `cargo build/test --workspace` are all green locally). What remains
-is verification that genuinely needs **real hardware, a real LAN, a running GUI, or a human
-decision** — none of which can be faked in code or CI. This is that list.
+Every milestone M0–M6 now has its **code + automated tests** in place, and the live agent (mesh +
+actuation + calibration + reconcile) is wired (138 tests pass; `cargo fmt`, `cargo clippy
+-D warnings`, and `cargo build/test --workspace` all green locally). What remains is verification
+that genuinely needs **real hardware, a real LAN, a running GUI, or a human decision** — none of
+which can be faked in code or CI. This is that list.
 
 Legend: ✅ done in code (tested) · ⬜ needs you (hardware / LAN / GUI / decision).
 
@@ -30,29 +31,39 @@ Legend: ✅ done in code (tested) · ⬜ needs you (hardware / LAN / GUI / decis
 
 ## M4 — Orchestration & presets
 - ✅ **Preset executor** (`execute_plan`): runs ops best-effort, collects per-monitor partial-failure results.
-- ✅ **Reconcile** logic (`reconcile` module): folds live `0x60` reads back, reports external changes.
+- ✅ **Reconcile** logic (`reconcile` module): folds live `0x60` reads back, reports external changes; `read_to_live_read` maps a read→owner via `CalibrationStore::owner_for` (tested).
 - ✅ **DDC-disabled** state (distinct, persistent) + marked from the switch path.
 - ✅ **Peer-loss → degraded** detector (`PeerRegistry::is_degraded`), feeding the partition guard.
-- ⬜ Wire the OS **periodic re-read + `WM_DISPLAYCHANGE`** trigger that *calls* `reconcile_all` (Windows glue; verify on hardware).
+- ✅ **Periodic reconcile sweep** wired in `--live` (reads via the actuator thread, applies under a brief lock).
+- ⬜ **`WM_DISPLAYCHANGE`** hook (Windows) for instant reconcile on dock/undock — periodic sweep covers the case at ~4 s latency; the event hook is a follow-up.
 
-## M5 — Tray UI & onboarding
-- ✅ **Controller + bind layer + data-driven tray**: the Slint tray reads `AppWindow` inputs (monitors / peers / presets / online / degraded), and its `switch` / `apply-preset` callbacks are overridable from Rust. `bind` maps Controller view models → Slint structs with index↔id translation (tested).
-- ✅ **`--live` mode** (`screenhop-ui -- --live`): enumerates this machine's real DDC/CI monitors and drives the tray through the production Controller → bind path — shows your actual panels + their state (read-only).
-- ⬜ Wire the **live mesh loop + real actuation**: start a `Node` (discovery + serve) and a `LocalActuator` (ddc driver + calibration), and route the tray's `switch` / `apply-preset` over the mesh. (Today `--live` shows the honest in-flight state and logs that routing/calibration aren't wired.)
-- ⬜ **Onboarding** flow (pair / calibrate cold-start / label) wired to the wizard surfaces.
-- ⬜ **Claude Design** review/approval of the mockups; confirm shipped UI **matches** them (D12).
+## M5 — Tray UI & the live agent
+- ✅ **Controller + bind layer + data-driven tray** (tested): Slint reads `AppWindow` inputs and its callbacks are Rust-overridable; `bind` does index↔id translation.
+- ✅ **Live agent** (`screenhop-ui -- --live`): actuator thread (owns the non-`Send` driver) + mesh `Node` (serve + discovery) + worker that routes tray clicks as real mesh switches; a `Timer` polls `MeshState` to refresh monitors/peers/online/degraded with in-flight feedback. Read-only fallback when no mesh secret.
+- ✅ **Calibration** (`screenhop-ui -- --calibrate`): learns + persists this peer's `0x60` per panel (what makes switches actually fire).
+- ⬜ **GUI onboarding wizard** wiring (pair / calibrate / label *in the window*) — today pairing is `mesh-secret` file + `--calibrate`; the wizard surfaces exist as design but aren't wired to the backend.
+- ⬜ **Active-console-session guard (D11)**: don't actuate from a locked/RDP/Session-0 context — not yet enforced (needs `WTSGetActiveConsoleSessionId`); documented in `installer/README.md`.
+- ⬜ **Claude Design** review/approval; confirm shipped UI **matches** the mockups (D12).
 - ⬜ **Onboarding ≤ 10 min** on a 2-PC rig; capture the **soak §4.7 numbers** via the harness.
+- ⬜ **End-to-end run on a 2-PC rig**: two PCs + a shared monitor, set `mesh-secret`, `--calibrate`, then a tray click moves the panel. (This is the big one — only verifiable on real hardware.)
 
 ## M6 — Packaging & OSS readiness
-- ✅ **License**: a single **MIT** license (`LICENSE`), matching `license = "MIT"` in Cargo.toml.
-- ✅ **CI** workflow ([.github/workflows/ci.yml](../.github/workflows/ci.yml)): fmt + clippy + build + test on `windows-latest`, an MSRV-1.82 build, and a release job that publishes binaries + **SHA-256**.
-- ✅ **Docs**: `CONTRIBUTING.md`, `SECURITY.md` (incl. DPAPI re-pair caveat), `docs/contributing-quirks.md`.
-- ⬜ Push and confirm **CI is green** on GitHub (the workflow is new; it hasn't run on the runners yet).
-- ⬜ **Inno installer + Scheduled-Task autostart** (M6.1) — not started; the one remaining build artifact.
+- ✅ **License**: single **MIT** (`LICENSE`), matching Cargo.toml.
+- ✅ **CI** ([.github/workflows/ci.yml](../.github/workflows/ci.yml)): fmt + clippy + build + test on `windows-latest`, MSRV-1.82 build, a release job (binaries + SHA-256), and an **installer** job (Inno Setup via choco → installer + SHA-256).
+- ✅ **Installer** ([installer/screen-hop.iss](../installer/screen-hop.iss)): per-user, **no-admin**, opt-in `HKCU\…\Run` autostart, clean uninstall (keeps config). Build/usage in [installer/README.md](../installer/README.md).
+- ✅ **Docs**: `CONTRIBUTING.md`, `SECURITY.md` (DPAPI caveat), `docs/contributing-quirks.md`, installer docs.
+- ⬜ Push and confirm **CI is green** on GitHub's runners (incl. the new installer job building under ISCC).
+- ⬜ **Code signing** (Azure Trusted Signing / OV-EV cert) — ships unsigned + SHA-256 for now (a deliberate decision).
 
-## Quick verification (what I ran)
+## Persistence (supporting the agent) — ✅ done in code
+- ✅ `screenhop-app::persist`: config dir (`directories`), atomic temp+rename writes, and save/load for identity, mesh secret, pins path, calibration, labels, config (tested round-trips + crash-safe overwrite).
+- ⬜ Wrap the secret/identity with the OS keystore (Windows **DPAPI**) — plaintext today (documented in `SECURITY.md` / `persist.rs`).
+
+## Quick verification (what I ran here)
 ```sh
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test  --workspace      # 125 passed
+cargo fmt --all -- --check                          # clean
+cargo clippy --workspace --all-targets -- -D warnings  # clean
+cargo test  --workspace                             # 138 passed
 ```
+Everything above the ⬜ lines compiles and (where logic) is unit-tested. The ⬜ items need your
+hardware / LAN / GUI / a human decision — see "your part" below.

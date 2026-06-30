@@ -71,3 +71,33 @@ jobs:
             target/release/screenhop-spike.exe
             SHA256SUMS.txt
           if-no-files-found: error
+
+  installer:
+    name: installer (windows)
+    runs-on: windows-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Release build
+        run: cargo build --release -p screenhop-ui -p screenhop-spike
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+      - name: Build installer
+        shell: pwsh
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\screen-hop.iss'
+      - name: SHA-256 the installer
+        shell: pwsh
+        run: |
+          Get-FileHash installer\dist\screen-hop-setup.exe -Algorithm SHA256 |
+            ForEach-Object { "{0}  {1}" -f $_.Hash, "screen-hop-setup.exe" } |
+            Tee-Object -FilePath installer\dist\SHA256SUMS-installer.txt
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: screen-hop-installer
+          path: |
+            installer/dist/screen-hop-setup.exe
+            installer/dist/SHA256SUMS-installer.txt
+          if-no-files-found: error
