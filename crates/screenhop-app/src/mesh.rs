@@ -361,7 +361,10 @@ fn handle_message(
             can_actuate,
             state_version,
         } => {
-            let now = elapsed_ms(start);
+            // Peer liveness is read by other layers (UI/reconcile) using wall-clock ms, so it must
+            // be stamped in the SAME domain — not the node-monotonic `elapsed_ms` (which would make
+            // every peer look ~decades stale and the mesh permanently "degraded").
+            let now = wall_ms();
             lock_or_recover(state).peers.observe_announce(
                 from,
                 name,
@@ -373,7 +376,7 @@ fn handle_message(
             None
         }
         Message::Heartbeat { state_version } => {
-            let now = elapsed_ms(start);
+            let now = wall_ms();
             lock_or_recover(state)
                 .peers
                 .observe_heartbeat(from, state_version, now);
