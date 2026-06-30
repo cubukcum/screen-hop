@@ -25,15 +25,20 @@ Output: `installer\dist\screen-hop-setup.exe`. CI builds this on every push (the
 
 ## First run
 
-1. Put the same **mesh secret** on each PC: write it to `mesh-secret` in the config dir
-   (`%APPDATA%\screen-hop`). (A pairing UI is a follow-up; today this is a file.)
+1. Put the same **mesh secret** on each PC: write it to a file named `mesh-secret` (no extension) in
+   the config dir `%APPDATA%\screen-hop\config`. Easiest, from PowerShell:
+   ```powershell
+   Set-Content "$env:APPDATA\screen-hop\config\mesh-secret" -Value "your-shared-passphrase" -Encoding ascii -NoNewline
+   ```
+   (A pairing UI is a follow-up; today this is a file.)
 2. **Calibrate**, with this PC shown on the panels: `screenhop-ui --calibrate`.
 3. Launch `screenhop-ui --live` (autostart does this for you).
 
 ## Config location
 
-`%APPDATA%\screen-hop` — `identity.key`, `mesh-secret`, `pins.json`, `calibration.json`,
-`labels.json`, `config.json`. Override with `SCREENHOP_CONFIG_DIR`.
+`%APPDATA%\screen-hop\config` — `identity.key`, `mesh-secret`, `pins.json`, `calibration.json`,
+`labels.json`, `config.json`. Override the whole location with `SCREENHOP_CONFIG_DIR`. (`--live`
+also prints this exact path if no `mesh-secret` is found.)
 
 ## Code signing
 
