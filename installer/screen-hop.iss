@@ -14,7 +14,7 @@
 #define AppVersion "0.1.0"
 
 [Setup]
-AppId={{8E5F4B2A-7C3D-4E1F-9A6B-screen-hop0001}
+AppId={{7F3A9C2E-1B4D-4E8A-9C5F-2D6E8A1B3C4D}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=screen-hop contributors
