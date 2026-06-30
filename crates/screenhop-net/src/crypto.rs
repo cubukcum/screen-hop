@@ -77,7 +77,13 @@ impl SecureChannel {
         let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
         let ct = self
             .cipher
-            .encrypt(&nonce, Payload { msg: plaintext, aad })
+            .encrypt(
+                &nonce,
+                Payload {
+                    msg: plaintext,
+                    aad,
+                },
+            )
             .expect("xchacha20poly1305 encryption does not fail for in-memory buffers");
         let mut framed = Vec::with_capacity(NONCE_LEN + ct.len());
         framed.extend_from_slice(nonce.as_slice());
@@ -124,7 +130,11 @@ impl ReplayWindow {
 
         if seq > self.high {
             let shift = seq - self.high;
-            self.bitmap = if shift >= 64 { 1 } else { (self.bitmap << shift) | 1 };
+            self.bitmap = if shift >= 64 {
+                1
+            } else {
+                (self.bitmap << shift) | 1
+            };
             self.high = seq;
             true
         } else {
@@ -158,7 +168,10 @@ mod tests {
     fn seal_then_open_round_trips() {
         let ch = SecureChannel::from_passphrase("mesh-secret");
         let frame = ch.seal(b"hello mesh", b"peerA:7");
-        assert_eq!(ch.open(&frame, b"peerA:7").as_deref(), Some(&b"hello mesh"[..]));
+        assert_eq!(
+            ch.open(&frame, b"peerA:7").as_deref(),
+            Some(&b"hello mesh"[..])
+        );
     }
 
     #[test]

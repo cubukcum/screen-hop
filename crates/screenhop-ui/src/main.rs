@@ -9,7 +9,10 @@ slint::include_modules!();
 use slint::ComponentHandle;
 
 fn arg_value(args: &[String], key: &str) -> Option<String> {
-    args.iter().position(|a| a == key).and_then(|i| args.get(i + 1)).cloned()
+    args.iter()
+        .position(|a| a == key)
+        .and_then(|i| args.get(i + 1))
+        .cloned()
 }
 
 fn main() -> Result<(), slint::PlatformError> {

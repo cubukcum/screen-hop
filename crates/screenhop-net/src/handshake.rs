@@ -127,7 +127,11 @@ pub fn handshake<S: Read + Write>(
     })
 }
 
-fn send<S: Write>(stream: &mut S, channel: &SecureChannel, msg: &HsMsg) -> Result<(), HandshakeError> {
+fn send<S: Write>(
+    stream: &mut S,
+    channel: &SecureChannel,
+    msg: &HsMsg,
+) -> Result<(), HandshakeError> {
     let bytes = serde_json::to_vec(msg).expect("handshake message serializes");
     write_frame(stream, &channel.seal(&bytes, HS_AAD))?;
     Ok(())
@@ -135,7 +139,9 @@ fn send<S: Write>(stream: &mut S, channel: &SecureChannel, msg: &HsMsg) -> Resul
 
 fn recv<S: Read>(stream: &mut S, channel: &SecureChannel) -> Result<HsMsg, HandshakeError> {
     let frame = read_frame(stream)?;
-    let plaintext = channel.open(&frame, HS_AAD).ok_or(HandshakeError::Decrypt)?;
+    let plaintext = channel
+        .open(&frame, HS_AAD)
+        .ok_or(HandshakeError::Decrypt)?;
     serde_json::from_slice(&plaintext).map_err(|_| HandshakeError::Parse)
 }
 
@@ -190,13 +196,24 @@ mod tests {
             let (mut sock, _) = listener.accept().unwrap();
             let me = PeerIdentity::generate();
             let mut pins = PinStore::new();
-            handshake(&mut sock, &SecureChannel::from_passphrase("RIGHT"), &me, &mut pins).is_ok()
+            handshake(
+                &mut sock,
+                &SecureChannel::from_passphrase("RIGHT"),
+                &me,
+                &mut pins,
+            )
+            .is_ok()
         });
 
         let mut client = TcpStream::connect(addr).unwrap();
         let me = PeerIdentity::generate();
         let mut pins = PinStore::new();
-        let result = handshake(&mut client, &SecureChannel::from_passphrase("WRONG"), &me, &mut pins);
+        let result = handshake(
+            &mut client,
+            &SecureChannel::from_passphrase("WRONG"),
+            &me,
+            &mut pins,
+        );
 
         assert!(result.is_err());
         assert!(!server.join().unwrap());

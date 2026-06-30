@@ -172,9 +172,13 @@ mod tests {
 
         let client = TcpStream::connect(addr).unwrap();
         let mut conn = SecureConnection::new(client, SecureChannel::from_passphrase("secret"));
-        conn.send("peerA", Message::Heartbeat { state_version: 7 }).unwrap();
+        conn.send("peerA", Message::Heartbeat { state_version: 7 })
+            .unwrap();
 
-        assert_eq!(server.join().unwrap(), Message::Heartbeat { state_version: 7 });
+        assert_eq!(
+            server.join().unwrap(),
+            Message::Heartbeat { state_version: 7 }
+        );
     }
 
     #[test]
@@ -188,7 +192,8 @@ mod tests {
 
         let client = TcpStream::connect(addr).unwrap();
         let mut conn = SecureConnection::new(client, SecureChannel::from_passphrase("WRONG"));
-        conn.send("peerA", Message::Heartbeat { state_version: 1 }).unwrap();
+        conn.send("peerA", Message::Heartbeat { state_version: 1 })
+            .unwrap();
 
         assert!(server.join().unwrap());
     }

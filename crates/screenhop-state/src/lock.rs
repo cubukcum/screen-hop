@@ -60,7 +60,13 @@ impl LockManager {
     /// Acquire (or renew, if already held by `peer`) the lock for `monitor`. Granted when the
     /// monitor is free, the existing lease has expired, or `peer` already holds it. The requested
     /// `lease_ms` is raised to at least [`MIN_LEASE_MS`] to preserve the D5 invariant.
-    pub fn acquire(&mut self, monitor: &str, peer: &str, now_ms: u64, lease_ms: u64) -> LockOutcome {
+    pub fn acquire(
+        &mut self,
+        monitor: &str,
+        peer: &str,
+        now_ms: u64,
+        lease_ms: u64,
+    ) -> LockOutcome {
         let lease_ms = lease_ms.max(MIN_LEASE_MS);
         if let Some(l) = self.locks.get(monitor) {
             if l.expires_ms > now_ms && l.holder != peer {
@@ -80,7 +86,13 @@ impl LockManager {
 
     /// Extend a lease the peer currently and validly holds. `None` if it doesn't hold it (or it
     /// already expired) — the caller must then re-acquire. `lease_ms` is floored at [`MIN_LEASE_MS`].
-    pub fn renew(&mut self, monitor: &str, peer: &str, now_ms: u64, lease_ms: u64) -> Option<Lease> {
+    pub fn renew(
+        &mut self,
+        monitor: &str,
+        peer: &str,
+        now_ms: u64,
+        lease_ms: u64,
+    ) -> Option<Lease> {
         let lease_ms = lease_ms.max(MIN_LEASE_MS);
         match self.locks.get(monitor) {
             Some(l) if l.holder == peer && l.expires_ms > now_ms => {
@@ -157,7 +169,10 @@ mod tests {
     #[test]
     fn acquires_a_free_lock() {
         let mut m = LockManager::new();
-        assert!(matches!(m.acquire("mon", "A", 0, LEASE), LockOutcome::Granted(_)));
+        assert!(matches!(
+            m.acquire("mon", "A", 0, LEASE),
+            LockOutcome::Granted(_)
+        ));
         assert_eq!(m.holder("mon", 1), Some("A"));
     }
 
@@ -167,7 +182,9 @@ mod tests {
         m.acquire("mon", "A", 0, LEASE);
         assert_eq!(
             m.acquire("mon", "B", 100, LEASE),
-            LockOutcome::Denied { current_holder: "A".into() }
+            LockOutcome::Denied {
+                current_holder: "A".into()
+            }
         );
     }
 
@@ -175,7 +192,10 @@ mod tests {
     fn same_peer_can_reacquire() {
         let mut m = LockManager::new();
         m.acquire("mon", "A", 0, LEASE);
-        assert!(matches!(m.acquire("mon", "A", 100, LEASE), LockOutcome::Granted(_)));
+        assert!(matches!(
+            m.acquire("mon", "A", 100, LEASE),
+            LockOutcome::Granted(_)
+        ));
     }
 
     #[test]
@@ -183,7 +203,10 @@ mod tests {
         let mut m = LockManager::new();
         m.acquire("mon", "A", 0, LEASE);
         // After the lease elapses, B can take it.
-        assert!(matches!(m.acquire("mon", "B", LEASE + 1, LEASE), LockOutcome::Granted(_)));
+        assert!(matches!(
+            m.acquire("mon", "B", LEASE + 1, LEASE),
+            LockOutcome::Granted(_)
+        ));
         assert_eq!(m.holder("mon", LEASE + 2), Some("B"));
     }
 
@@ -228,7 +251,9 @@ mod tests {
     #[test]
     fn acquire_all_succeeds_when_all_free() {
         let mut m = LockManager::new();
-        assert!(m.acquire_all(&["mon1", "mon2", "mon3"], "A", 0, LEASE).is_ok());
+        assert!(m
+            .acquire_all(&["mon1", "mon2", "mon3"], "A", 0, LEASE)
+            .is_ok());
         assert_eq!(m.holder("mon1", 1), Some("A"));
         assert_eq!(m.holder("mon3", 1), Some("A"));
     }
@@ -255,6 +280,10 @@ mod tests {
         m.acquire("mon2", "B", 0, LEASE); // B blocks
         let err = m.acquire_all(&["mon1", "mon2"], "A", 100, LEASE);
         assert_eq!(err, Err(("mon2".into(), "B".into())));
-        assert_eq!(m.holder("mon1", 200), Some("A"), "prior hold must survive rollback");
+        assert_eq!(
+            m.holder("mon1", 200),
+            Some("A"),
+            "prior hold must survive rollback"
+        );
     }
 }
