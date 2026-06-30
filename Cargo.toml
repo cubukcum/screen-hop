@@ -14,7 +14,7 @@ members = [
 
 [workspace.package]
 edition = "2021"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 repository = "https://github.com/screen-hop/screen-hop"
 # MSRV: raised to 1.82 — the codebase uses `Option::is_none_or` (stabilized in 1.82). CI's
 # build-on-MSRV job must use this toolchain.

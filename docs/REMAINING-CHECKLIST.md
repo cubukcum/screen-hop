@@ -44,7 +44,7 @@ Legend: ✅ done in code (tested) · ⬜ needs you (hardware / LAN / GUI / decis
 - ⬜ **Onboarding ≤ 10 min** on a 2-PC rig; capture the **soak §4.7 numbers** via the harness.
 
 ## M6 — Packaging & OSS readiness
-- ✅ **Dual license fixed**: `LICENSE-MIT` + `LICENSE-APACHE` now both present (was MIT-only despite the `MIT OR Apache-2.0` claim).
+- ✅ **License**: a single **MIT** license (`LICENSE`), matching `license = "MIT"` in Cargo.toml.
 - ✅ **CI** workflow ([.github/workflows/ci.yml](../.github/workflows/ci.yml)): fmt + clippy + build + test on `windows-latest`, an MSRV-1.82 build, and a release job that publishes binaries + **SHA-256**.
 - ✅ **Docs**: `CONTRIBUTING.md`, `SECURITY.md` (incl. DPAPI re-pair caveat), `docs/contributing-quirks.md`.
 - ⬜ Push and confirm **CI is green** on GitHub (the workflow is new; it hasn't run on the runners yet).

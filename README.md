@@ -4,7 +4,7 @@
 click, without reaching for each monitor's input-source button.**
 
 [![CI](https://github.com/cubukcum/screen-hop/actions/workflows/ci.yml/badge.svg)](https://github.com/cubukcum/screen-hop/actions/workflows/ci.yml)
-![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![rustc 1.82+](https://img.shields.io/badge/rustc-1.82%2B-orange.svg)
 ![platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
 ![status: pre-1.0](https://img.shields.io/badge/status-pre--1.0-yellow.svg)
@@ -155,6 +155,4 @@ hardware limits (it's the whole ethos here), and have fun.
 
 ## License
 
-Dual-licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
-[LICENSE-APACHE](LICENSE-APACHE). Use whichever you prefer. Contributions are accepted under the same
-dual license.
+Licensed under the **MIT License** — see [LICENSE](LICENSE). Contributions are accepted under MIT.

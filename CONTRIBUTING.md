@@ -68,7 +68,7 @@ cargo run -p screenhop-spike -- list    # just enumerate panels
 2. Match the surrounding code's style and comment density. CI enforces `rustfmt` + `clippy`.
 3. Describe what you changed and how you verified it (paste test output; note any manual hardware
    steps you ran).
-4. By contributing you agree your work is dual-licensed **MIT OR Apache-2.0** (see
+4. By contributing you agree your work is licensed under the **MIT License** (see
    [LICENSE](LICENSE)).
 
 ## Contributing a panel quirk
