@@ -165,13 +165,17 @@ impl MdnsDiscovery {
     /// node's mesh listen port. We pass the detected primary IPv4 when available (empty otherwise)
     /// and also `enable_addr_auto` so the advertised set stays current as interfaces change.
     pub fn announce(&self, peer_id: &str, port: u16) -> Result<(), mdns_sd::Error> {
-        let host = format!("{peer_id}.local.");
+        // mDNS/DNS labels must be < 64 bytes, but a peer_id is a 64-hex string — using it as the
+        // instance/host name overflows and panics mdns-sd. Use a short prefix for the visible name
+        // and carry the FULL id in a TXT record (browsers match peers on that).
+        let short: String = peer_id.chars().take(16).collect();
+        let host = format!("{short}.local.");
         let ip = primary_local_ipv4()
             .map(|v4| v4.to_string())
             .unwrap_or_default();
         let info = ServiceInfo::new(
             SERVICE_TYPE,
-            peer_id, // instance name (unique per peer)
+            &short, // instance name (short; the full id travels in TXT)
             &host,
             ip.as_str(),
             port,
