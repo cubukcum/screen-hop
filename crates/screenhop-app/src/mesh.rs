@@ -22,6 +22,11 @@ use crate::peers::PeerRegistry;
 /// pre-auth stall an unpaired host could cause (net security review, HIGH finding).
 const READ_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Outbound TCP connect timeout. Discovery often surfaces multiple addresses per peer (real LAN IP
+/// plus virtual adapters from Hyper-V/VMware/WSL/VPNs); a dead one would otherwise block on the OS
+/// SYN timeout (~20 s) and stall the discovery/refresh loop past the liveness window. Fail fast.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// Cap on concurrent inbound connection-handler threads. The accept loop spawns one thread per
 /// connection *before* the handshake, so without a cap an unpaired LAN host (the v1 threat model)
 /// could open thousands of sockets and exhaust threads/memory pre-auth. A one-operator mesh needs
@@ -199,7 +204,7 @@ impl Node {
 
     /// Connect to a peer, complete the mutual handshake, and return a [`Session`] for messaging.
     pub fn connect(&self, addr: SocketAddr) -> Result<Session<TcpStream>, ConnectError> {
-        let mut stream = TcpStream::connect(addr)?;
+        let mut stream = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT)?;
         stream.set_read_timeout(Some(READ_TIMEOUT))?;
 
         let channel = SecureChannel::new(&self.key);
