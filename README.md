@@ -9,9 +9,16 @@ write (VCP feature `0x60`) to whichever PC can physically drive that panel — b
 PC switches the monitor **to itself** (the reliable direction) — then reconciles ownership against
 the monitor's live `0x60` value as ground truth.
 
-> **Status:** early implementation (≈ milestone M5). Cross-platform **Rust + Slint**, targeting
-> **Windows → Linux → macOS (best-effort)**. See [docs/PLAN-screen-hop.md](docs/PLAN-screen-hop.md)
-> for the full product definition, architecture, and decision log.
+> **Status:** implementation in place across milestones **M0–M6** (domain core, identity, mesh +
+> discovery, orchestration/presets/reconcile, UI controller, CI + packaging). What remains is the
+> **verification that needs real hardware, a real LAN, and design sign-off** — pull-to-self on ≥2
+> rigs, mDNS on a real LAN, the onboarding/soak numbers, and the Slint live-binding to the
+> controller. What's code-complete vs. what still needs you is laid out in
+> [docs/REMAINING-CHECKLIST.md](docs/REMAINING-CHECKLIST.md) (with the
+> [hardware verdict log](docs/hardware/pull-to-self-verdicts.md)). Cross-platform **Rust + Slint**,
+> targeting **Windows → Linux → macOS (best-effort)**. See
+> [docs/PLAN-screen-hop.md](docs/PLAN-screen-hop.md) for the full product definition, architecture,
+> and decision log.
 
 ## Honest boundaries (read these first)
 
@@ -73,6 +80,14 @@ is pinned trust-on-first-use, so a changed key for a known peer is refused. Cont
 only** — no WAN, no UPnP. The threat model is denial-of-visibility by an *unpaired* host on a
 personal LAN; an already-paired peer run by the same operator is out of scope. See plan §9.
 
+## Contributing & security
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — build/test, the CI gates, and the workspace map.
+- [docs/contributing-quirks.md](docs/contributing-quirks.md) — how to submit a panel quirk.
+- [SECURITY.md](SECURITY.md) — threat model summary, how to report a vulnerability, and the
+  Windows/DPAPI re-pair caveat.
+
 ## License
 
-Dual-licensed under **MIT OR Apache-2.0**.
+Dual-licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
+[LICENSE-APACHE](LICENSE-APACHE). You may use either at your option.
