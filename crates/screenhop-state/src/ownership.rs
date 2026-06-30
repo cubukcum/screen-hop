@@ -1,17 +1,21 @@
 use std::collections::HashMap;
 
 /// Distinct ownership states (§8.6). `owner == None` alone is ambiguous; this disambiguates the
-/// three cases the UX and reconciliation care about:
+/// cases the UX and reconciliation care about:
 /// - `Owned`: a peer is the believed live source.
 /// - `Unknown`: never observed / unowned — a transient "we don't know yet" state.
 /// - `Stranded`: the owning PC is unreachable and no online peer can read the panel, so there is
 ///   no software recovery (the operator must press the monitor's physical input button). This is a
 ///   *persistent* state, not transient unknown.
+/// - `DdcDisabled`: DDC/CI is turned off in the panel's OSD, so it can be neither read nor switched
+///   over the wire. Also persistent, but distinct from `Stranded` (the cause and the fix differ:
+///   the user re-enables DDC/CI in the OSD rather than pressing the input button).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnershipState {
     Owned,
     Unknown,
     Stranded,
+    DdcDisabled,
 }
 
 /// Who currently drives a monitor, with the timestamp the fact was established. This is a
@@ -42,7 +46,13 @@ impl OwnershipMap {
         Self::default()
     }
 
-    fn apply(&mut self, monitor: &str, owner: Option<String>, updated_ms: u64, state: OwnershipState) -> bool {
+    fn apply(
+        &mut self,
+        monitor: &str,
+        owner: Option<String>,
+        updated_ms: u64,
+        state: OwnershipState,
+    ) -> bool {
         if let Some(existing) = self.records.get(monitor) {
             if existing.updated_ms >= updated_ms {
                 return false;
@@ -83,11 +93,16 @@ impl OwnershipMap {
         self.apply(monitor, None, now_ms, OwnershipState::Stranded)
     }
 
+    /// Mark a monitor **DDC-disabled**: DDC/CI is off in the OSD, so it can't be read or switched
+    /// over the wire. Persistent (like stranded) until a fresh observation supersedes it; the fix
+    /// is for the user to re-enable DDC/CI in the monitor's menu.
+    pub fn mark_ddc_disabled(&mut self, monitor: &str, now_ms: u64) -> bool {
+        self.apply(monitor, None, now_ms, OwnershipState::DdcDisabled)
+    }
+
     /// Current believed owner of a monitor, if known and non-empty.
     pub fn owner(&self, monitor: &str) -> Option<&str> {
-        self.records
-            .get(monitor)
-            .and_then(|r| r.owner.as_deref())
+        self.records.get(monitor).and_then(|r| r.owner.as_deref())
     }
 
     /// The distinct ownership state of a monitor (`Unknown` if never seen).
@@ -150,6 +165,23 @@ mod tests {
         assert_eq!(m.owner("mon"), None);
         assert_eq!(m.state("mon"), OwnershipState::Unknown);
         assert!(m.record("mon").is_some());
+    }
+
+    #[test]
+    fn ddc_disabled_is_a_distinct_persistent_state() {
+        let mut m = OwnershipMap::new();
+        m.merge("mon", Some("A".into()), 100);
+        // DDC/CI got turned off in the OSD; the panel can't be read or switched.
+        assert!(m.mark_ddc_disabled("mon", 200));
+        assert_eq!(m.state("mon"), OwnershipState::DdcDisabled);
+        assert_eq!(m.owner("mon"), None);
+        // Distinct from stranded, and persists against stale gossip.
+        assert_ne!(m.state("mon"), OwnershipState::Stranded);
+        assert!(!m.merge("mon", Some("A".into()), 150));
+        assert_eq!(m.state("mon"), OwnershipState::DdcDisabled);
+        // A fresh live read (DDC re-enabled) supersedes it.
+        assert!(m.observe("mon", Some("A".into()), 300));
+        assert_eq!(m.state("mon"), OwnershipState::Owned);
     }
 
     #[test]

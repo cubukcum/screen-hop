@@ -2,11 +2,21 @@
 //! peer identity, replicated state, and lease lock together (milestone M3). Orchestration
 //! (presets, blind-point logic) builds on this in M4.
 
+pub mod actuator;
+pub mod discovery;
+pub mod harness;
 pub mod mesh;
 pub mod orchestration;
+pub mod peers;
+pub mod reconcile;
 
+pub use actuator::LocalActuator;
+pub use discovery::{merge, DiscoveredPeer, Discovery, ManualHosts, MdnsDiscovery, PeerSource};
+pub use harness::{soak_panel, PanelStats, SoakReport, SoakSample};
 pub use mesh::{ActuationReport, Actuator, ConnectError, MeshState, Node, Session};
 pub use orchestration::{
-    plan_preset, resolve_actuation, would_go_blind, ActuationError, PlannedSwitch, SwitchOp,
-    SwitchPlan,
+    execute_plan, plan_preset, resolve_actuation, would_go_blind, ActuationError, PlannedSwitch,
+    PresetOutcome, SwitchOp, SwitchOpResult, SwitchPlan,
 };
+pub use peers::{PeerPresence, PeerRegistry};
+pub use reconcile::{reconcile_all, reconcile_one, LiveRead, ReconcileChange};

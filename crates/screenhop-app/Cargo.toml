@@ -6,5 +6,8 @@ license.workspace = true
 
 [dependencies]
 screenhop-core = { path = "../screenhop-core" }
+screenhop-identity = { path = "../screenhop-identity" }
 screenhop-net = { path = "../screenhop-net" }
+screenhop-quirks = { path = "../screenhop-quirks" }
 screenhop-state = { path = "../screenhop-state" }
+mdns-sd = { workspace = true }

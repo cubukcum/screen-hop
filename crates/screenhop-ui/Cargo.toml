@@ -7,6 +7,9 @@ license.workspace = true
 [dependencies]
 slint = { workspace = true }
 image = { workspace = true }
+screenhop-app = { path = "../screenhop-app" }
+screenhop-core = { path = "../screenhop-core" }
+screenhop-state = { path = "../screenhop-state" }
 
 [build-dependencies]
 slint-build = { workspace = true }

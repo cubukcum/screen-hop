@@ -150,6 +150,14 @@ impl QuirksDb {
         q
     }
 
+    /// Insert or replace a quirk in the **local-learned** layer in memory (precedence: above
+    /// shipped, below user). The app calls this when it learns a panel-global fact at runtime
+    /// (e.g. read-back proved unreliable); persisting it to the on-disk local layer via
+    /// [`QuirksDb::load_local`]'s file is the caller's responsibility.
+    pub fn set_local(&mut self, key: impl Into<String>, quirk: Quirk) {
+        self.local.insert(key.into(), quirk);
+    }
+
     /// Build an [`ActuationPolicy`] for `key` from `confirmed_values` (the per-(peer,monitor)
     /// self-calibrated allow-list — the ONLY source of writable values) plus the merged quirk's
     /// safety/behavior facts (blocked set, settle time, read-back reliability).
@@ -237,6 +245,28 @@ mod tests {
         let mut blocked = m.blocked_input_values.clone();
         blocked.sort();
         assert_eq!(blocked, vec![0x01, 0x02]);
+    }
+
+    #[test]
+    fn set_local_is_visible_and_stays_below_user() {
+        let mut db = QuirksDb::default();
+        db.set_local(
+            "M",
+            Quirk {
+                settle_ms: Some(1234),
+                ..Quirk::default()
+            },
+        );
+        assert_eq!(db.merged("M").settle_ms, Some(1234));
+        // The user layer still overrides the local-learned one.
+        db.user.insert(
+            "M".into(),
+            Quirk {
+                settle_ms: Some(999),
+                ..Quirk::default()
+            },
+        );
+        assert_eq!(db.merged("M").settle_ms, Some(999));
     }
 
     #[test]
