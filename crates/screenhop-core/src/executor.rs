@@ -1,7 +1,5 @@
 use crate::driver::{Clock, Delayer, MonitorDriver};
-use crate::types::{
-    ActuationPolicy, DdcWriteResult, SwitchOutcome, SwitchRequest, SwitchResult,
-};
+use crate::types::{ActuationPolicy, DdcWriteResult, SwitchOutcome, SwitchRequest, SwitchResult};
 
 /// VCP feature code for Input Select.
 pub const VCP_INPUT_SELECT: u8 = 0x60;
@@ -89,7 +87,10 @@ impl<D: MonitorDriver, L: Delayer, C: Clock> SwitchExecutor<D, L, C> {
             }
             attempts += 1;
 
-            match self.driver.write_input(&request.monitor_id, request.input_value) {
+            match self
+                .driver
+                .write_input(&request.monitor_id, request.input_value)
+            {
                 DdcWriteResult::Unsupported => {
                     // The OS/monitor rejected the code outright; retrying won't help.
                     return SwitchResult {
@@ -160,7 +161,9 @@ impl<D: MonitorDriver, L: Delayer, C: Clock> SwitchExecutor<D, L, C> {
     fn backoff(&self, policy: &ActuationPolicy, attempt_index: u32, deadline_ms: u64) {
         if policy.backoff_ms > 0 {
             // Linear backoff, overflow-safe (a large backoff_ms × attempt would otherwise wrap/panic).
-            let wait = policy.backoff_ms.saturating_mul(attempt_index.saturating_add(1));
+            let wait = policy
+                .backoff_ms
+                .saturating_mul(attempt_index.saturating_add(1));
             self.delay_clamped(wait, deadline_ms);
         }
     }
@@ -188,6 +191,7 @@ fn refusal(outcome: SwitchOutcome, detail: &str) -> SwitchResult {
 mod tests {
     use super::*;
     use crate::driver::{Clock, Delayer};
+    use proptest::prelude::*;
     use std::cell::Cell;
     use std::collections::VecDeque;
     use std::rc::Rc;
@@ -232,6 +236,8 @@ mod tests {
         apply_write: bool,
         write_calls: u32,
         read_calls: u32,
+        /// Every value the driver was actually asked to write (for the soft-brick property test).
+        written: Vec<u32>,
     }
 
     impl Fake {
@@ -245,6 +251,7 @@ mod tests {
                 apply_write: true,
                 write_calls: 0,
                 read_calls: 0,
+                written: Vec::new(),
             }
         }
     }
@@ -263,6 +270,7 @@ mod tests {
         }
         fn write_input(&mut self, _id: &str, value: u32) -> DdcWriteResult {
             self.write_calls += 1;
+            self.written.push(value);
             let r = self.write_queue.pop_front().unwrap_or(self.write_result);
             if r == DdcWriteResult::Ok && self.apply_write {
                 self.current = value;
@@ -271,7 +279,12 @@ mod tests {
         }
     }
 
-    fn policy(readback_reliable: bool, max_attempts: u32, blocked: &[u32], confirmed: &[u32]) -> ActuationPolicy {
+    fn policy(
+        readback_reliable: bool,
+        max_attempts: u32,
+        blocked: &[u32],
+        confirmed: &[u32],
+    ) -> ActuationPolicy {
         let mut p = ActuationPolicy::new(confirmed.iter().copied(), blocked.iter().copied());
         p.max_attempts = max_attempts;
         p.settle_ms = 0;
@@ -407,6 +420,82 @@ mod tests {
             r.detail
         );
         // ~3 attempts fit before 2.5s elapses (settle 1s each), far short of max_attempts.
-        assert!(r.attempts <= 4, "attempts should be ceiling-bounded, got {}", r.attempts);
+        assert!(
+            r.attempts <= 4,
+            "attempts should be ceiling-bounded, got {}",
+            r.attempts
+        );
+    }
+
+    proptest! {
+        /// D7 soft-brick invariant (PLAN §6.1, DoD line 519): across arbitrary policies and driver
+        /// behaviour, the executor must NEVER issue a 0x60 write whose value is blocked or not
+        /// self-confirmed. Rather than restate the two hardcoded refusal cases, this records EVERY
+        /// value the driver was actually asked to write and asserts each satisfies the invariant —
+        /// so any future code path that computed a different value to write would also be caught.
+        #[test]
+        fn never_writes_a_blocked_or_unconfirmed_value(
+            target in 0u32..=0x40,
+            confirmed in prop::collection::hash_set(0u32..=0x40, 0..6),
+            blocked in prop::collection::hash_set(0u32..=0x40, 0..6),
+            ddc_available in any::<bool>(),
+            readback_reliable in any::<bool>(),
+            read_succeeds in any::<bool>(),
+            apply_write in any::<bool>(),
+            max_attempts in 1u32..=5,
+            write_codes in prop::collection::vec(0u8..3, 0..6),
+        ) {
+            let write_queue: VecDeque<DdcWriteResult> = write_codes
+                .iter()
+                .map(|c| match c {
+                    0 => DdcWriteResult::Ok,
+                    1 => DdcWriteResult::Failed,
+                    _ => DdcWriteResult::Unsupported,
+                })
+                .collect();
+
+            let mut fake = Fake::new();
+            fake.ddc_available = ddc_available;
+            fake.read_succeeds = read_succeeds;
+            fake.apply_write = apply_write;
+            fake.write_queue = write_queue;
+
+            let mut p = ActuationPolicy::new(confirmed.iter().copied(), blocked.iter().copied());
+            p.max_attempts = max_attempts;
+            p.settle_ms = 0;
+            p.backoff_ms = 0;
+            p.readback_reliable = readback_reliable;
+
+            let request = SwitchRequest {
+                monitor_id: MON.to_string(),
+                input_value: target,
+                direction: SwitchDirection::PullToSelf,
+            };
+
+            let mut e = exec(fake);
+            let result = e.execute(&request, &p);
+            let written = e.driver_mut().written.clone();
+
+            // CORE INVARIANT: every value actually written is self-confirmed AND not blocked.
+            for &v in &written {
+                prop_assert!(
+                    confirmed.contains(&v) && !blocked.contains(&v),
+                    "wrote 0x{v:02X}, violating soft-brick guard (confirmed={confirmed:?}, blocked={blocked:?})"
+                );
+            }
+
+            // Refusals must happen BEFORE any write, with the right reason and the documented
+            // precedence (capability gate > blocked > unconfirmed).
+            if !ddc_available {
+                prop_assert_eq!(result.outcome, SwitchOutcome::DdcUnavailable);
+                prop_assert!(written.is_empty());
+            } else if blocked.contains(&target) {
+                prop_assert_eq!(result.outcome, SwitchOutcome::BlockedValue);
+                prop_assert!(written.is_empty());
+            } else if !confirmed.contains(&target) {
+                prop_assert_eq!(result.outcome, SwitchOutcome::NeedsCalibration);
+                prop_assert!(written.is_empty());
+            }
+        }
     }
 }

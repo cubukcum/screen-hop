@@ -35,3 +35,7 @@ ddc-hi = "0.4"
 slint = "1"
 slint-build = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
+# LAN peer discovery (mDNS/DNS-SD) — register + browse `_screenhop._tcp` (M3.2).
+mdns-sd = "0.20"
+# Dev-only: property-based testing for invariant proofs (e.g. the D7 soft-brick guard).
+proptest = "1"
