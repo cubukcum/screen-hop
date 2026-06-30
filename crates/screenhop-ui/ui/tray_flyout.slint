@@ -1,0 +1,199 @@
+import { Theme } from "theme.slint";
+
+export struct Peer {
+    label: string,
+    color: color,   // per-PC brand color (active segment fill)
+}
+
+export struct MonitorRow {
+    name: string,
+    spec: string,
+    active: int,   // index into `peers` = the PC currently driving this monitor
+    switching: bool,   // a 0x60 write is in flight — show progress, do NOT fake the new owner yet
+}
+
+export struct Preset {
+    name: string,
+    active: bool,
+}
+
+// Variant C — "inline segmented, one click, no expand" (the selected design): each monitor row
+// carries a Work|Gam|Lab segmented control whose highlighted segment is the current owner.
+export component TrayFlyout inherits Rectangle {
+    in property <[MonitorRow]> monitors;
+    in property <[Peer]> peers;
+    in property <[Preset]> presets;
+    in property <int> online-count: 3;
+    in property <bool> degraded: false;   // mesh partitioned — disruptive controls are paused
+    in-out property <int> selected-preset: 0;   // highlighted preset (click feedback)
+    callback toggle-theme();
+    callback switch(int, int);    // (monitor-index, peer-index)
+    callback apply-preset(int);
+
+    width: 350px;
+    border-radius: 11px;
+    background: Theme.layer;
+    border-width: 1px;
+    border-color: Theme.stroke;
+    drop-shadow-blur: 34px;
+    drop-shadow-color: #00000026;
+    drop-shadow-offset-y: 10px;
+
+    VerticalLayout {
+        // ---------------- header ----------------
+        HorizontalLayout {
+            padding: 14px;
+            padding-bottom: 12px;
+            spacing: 9px;
+
+            Rectangle {   // logo (click toggles theme — dev affordance, no chrome)
+                width: 26px;
+                height: 26px;
+                border-radius: 7px;
+                background: @linear-gradient(160deg, #117c44 0%, #0c5e32 100%);
+                TouchArea { clicked => { root.toggle-theme(); } }
+                Path {   // screen-hop mark: monitor + hop arc (i-logo)
+                    width: 17px;
+                    height: 17px;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    stroke: #ffffff;
+                    stroke-width: 1.7px;
+                    fill: transparent;
+                    commands: "M2.6 8.6 L13.6 8.6 L13.6 18 L2.6 18 Z M9 21 L6.2 21 M7.8 18 L7.8 21 M12.8 7.6 C13.6 4.2 17 2.9 19.6 4.8 M20.7 3.1 L21.1 5.8 L18.4 5.9";
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+                HorizontalLayout {
+                    Text { text: "screen-"; color: Theme.text; font-size: 15px; font-weight: 600; }
+                    Text { text: "hop"; color: Theme.accent-text; font-size: 15px; font-weight: 600; }
+                }
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            Rectangle {   // status pill — amber "Degraded" when the mesh is partitioned (§8.6)
+                height: 22px;
+                border-radius: 11px;
+                background: degraded ? Theme.warn-bg : Theme.accent-soft;
+                HorizontalLayout {
+                    padding-left: 9px;
+                    padding-right: 10px;
+                    spacing: 6px;
+                    VerticalLayout {   // wrap so the dot centers on the cross axis
+                        alignment: center;
+                        Rectangle { width: 6px; height: 6px; border-radius: 3px; background: degraded ? Theme.warn-accent : Theme.ok-dot; }
+                    }
+                    Text { text: degraded ? "Degraded" : "\{online-count} online"; color: degraded ? Theme.warn-text : Theme.accent-text; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
+                }
+            }
+        }
+
+        Rectangle { height: 1px; background: Theme.stroke; }
+
+        // ---------------- monitor rows ----------------
+        for m[mi] in monitors: Rectangle {
+            VerticalLayout {
+                HorizontalLayout {
+                    padding-left: 15px;
+                    padding-right: 13px;
+                    padding-top: 13px;
+                    padding-bottom: 13px;
+                    spacing: 10px;
+
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        alignment: center;
+                        spacing: 2px;
+                        Text { text: m.name; color: Theme.text; font-size: 13.5px; font-weight: 600; overflow: elide; }
+                        Text { text: m.spec; color: Theme.text3; font-size: 11px; overflow: elide; }
+                    }
+
+                    // In-flight: a 0x60 write takes ~1–3s and can retry — show progress, never a
+                    // faked instant owner change. Production flips `active` only on a verified
+                    // read-back; until then the row sits in this `switching` state.
+                    if m.switching : Rectangle {
+                        height: 30px;
+                        border-radius: 8px;
+                        background: Theme.warn-bg;
+                        border-width: 1px;
+                        border-color: Theme.warn-stroke;
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            spacing: 7px;
+                            alignment: center;
+                            VerticalLayout {
+                                alignment: center;
+                                Rectangle { width: 7px; height: 7px; border-radius: 3.5px; background: Theme.warn-accent; }
+                            }
+                            Text { text: "Switching… ~2s"; color: Theme.warn-text; font-size: 12px; font-weight: 600; vertical-alignment: center; }
+                        }
+                    }
+                    if !m.switching : Rectangle {   // segmented control
+                        height: 30px;
+                        border-radius: 8px;
+                        background: Theme.subtle;
+                        border-width: 1px;
+                        border-color: Theme.ctl-stroke;
+                        HorizontalLayout {
+                            padding: 3px;
+                            spacing: 2px;
+                            for p[pi] in peers: Rectangle {
+                                width: 44px;
+                                border-radius: 6px;
+                                background: pi == m.active ? p.color : (seg.has-hover ? Theme.stroke : transparent);
+                                animate background { duration: 110ms; }
+                                seg := TouchArea { clicked => { if !root.degraded { root.switch(mi, pi); } } }
+                                Text {
+                                    text: p.label;
+                                    color: pi == m.active ? #ffffff : Theme.text2;
+                                    font-size: 12px;
+                                    font-weight: 600;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+                Rectangle {   // inter-row divider (skip after the last row)
+                    height: 1px;
+                    background: mi < monitors.length - 1 ? Theme.stroke : transparent;
+                }
+            }
+        }
+
+        Rectangle { height: 1px; background: Theme.stroke; }
+
+        // ---------------- presets ----------------
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 11px;
+            padding-bottom: 13px;
+            spacing: 7px;
+            alignment: start;
+            Text { text: "PRESETS"; color: Theme.text3; font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; vertical-alignment: center; }
+            for p[pi] in presets: Rectangle {
+                height: 28px;
+                width: ptxt.preferred-width + 20px;
+                border-radius: 8px;
+                background: pi == root.selected-preset ? Theme.accent-soft : Theme.layer;
+                border-width: 1px;
+                border-color: pi == root.selected-preset ? Theme.accent-soft-stroke : Theme.ctl-stroke;
+                TouchArea { clicked => { if !root.degraded { root.selected-preset = pi; root.apply-preset(pi); } } }
+                ptxt := Text {
+                    text: p.name;
+                    color: pi == root.selected-preset ? Theme.accent-text : Theme.text;
+                    font-size: 12.5px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}

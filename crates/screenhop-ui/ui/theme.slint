@@ -1,0 +1,48 @@
+// Design tokens distilled from docs/design/DESIGN-SPEC.md (Windows 11 Fluent, green accent).
+// Light/dark switch via `Theme.dark`. 8-digit hex encodes alpha (#rrggbbaa).
+export global Theme {
+    in property <bool> dark: false;
+
+    // ---- surfaces ----
+    out property <color> bg:         dark ? #1f1f1f : #f3f3f3;
+    out property <color> bg2:        dark ? #272727 : #eaeaea;
+    out property <color> layer:      dark ? #2b2b2b : #ffffff;
+    out property <color> layer2:     dark ? #242424 : #f6f6f6;
+    out property <color> flyout-bg:  dark ? #2b2b2b : #f8f8fa;
+    out property <color> subtle:     dark ? #ffffff0d : #fbfbfb;
+
+    // ---- text ----
+    out property <color> text:   dark ? #ffffff : #1a1a1a;
+    out property <color> text2:  dark ? #ffffffba : #5c5c5c;
+    out property <color> text3:  dark ? #ffffff75 : #8a8a8a;
+
+    // ---- lines ----
+    out property <color> stroke:      dark ? #ffffff14 : #00000014;
+    out property <color> ctl-stroke:  dark ? #ffffff29 : #00000029;
+
+    // ---- accent (success green) ----
+    out property <color> accent:             dark ? #4abc7c : #107c41;
+    out property <color> accent-text:        dark ? #6fd49a : #0e6b36;
+    out property <color> accent-soft:        dark ? #4abc7c29 : #e8f3ec;
+    out property <color> accent-soft-stroke: dark ? #4abc7c5c : #bfe0cb;
+    out property <color> ok-dot:             dark ? #4abc7c : #1aa251;
+
+    // ---- per-PC brand colors ----
+    out property <color> pc-work:    #117c44;
+    out property <color> pc-gaming:  #3a6fb0;
+    out property <color> pc-homelab: #0e8a8a;
+
+    // ---- status ----
+    out property <color> ok-bg:        dark ? #4abc7c29 : #ecf6ef;
+    out property <color> warn-text:    dark ? #f2c879 : #8a5300;
+    out property <color> warn-accent:  dark ? #e7a93c : #b26a00;
+    out property <color> warn-bg:      dark ? #312a18 : #fff7ea;
+    out property <color> warn-stroke:  dark ? #544326 : #efd9ae;
+    out property <color> danger:       dark ? #e04a3c : #c42b1c;
+    out property <color> danger-text:  dark ? #ff99a0 : #b22a1c;
+    out property <color> danger-bg:    dark ? #371d1b : #fdf1f0;
+
+    // ---- type ----
+    out property <string> font:      "Segoe UI";
+    out property <string> font-mono: "Cascadia Mono";
+}

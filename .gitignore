@@ -1,0 +1,16 @@
+# Rust build output
+/target
+
+# IDEs
+.idea/
+.vs/
+.vscode/
+
+# Logs / local scratch
+*.log
+
+# Agent / assistant tooling (local, not part of the project)
+.agent/
+.claude/
+
+# Note: Cargo.lock IS committed (screen-hop ships binaries, not just libraries).

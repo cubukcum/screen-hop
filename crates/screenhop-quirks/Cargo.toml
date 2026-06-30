@@ -1,0 +1,10 @@
+[package]
+name = "screenhop-quirks"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+screenhop-core = { path = "../screenhop-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }

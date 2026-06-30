@@ -1,0 +1,112 @@
+import { Theme } from "theme.slint";
+import { TrayFlyout, MonitorRow } from "tray_flyout.slint";
+import { OnboardingWizard } from "onboarding.slint";
+import { BlindDialog, StrandedDialog, DdcDialog, PartialDialog, SwitchingDialog, DegradedDialog } from "dialogs.slint";
+import { DeskMap } from "deskmap.slint";
+import { Settings } from "settings.slint";
+
+export { Theme }
+
+// Preview window. A small dev switcher flips between the surfaces and toggles the theme.
+// The real app surfaces these from a tray popover / wizard window fed by live mesh state.
+export component AppWindow inherits Window {
+    title: "screen-hop";
+    default-font-family: "Segoe UI Variable Text";
+    background: Theme.bg;
+    in-out property <bool> dark <=> Theme.dark;
+    in-out property <int> screen: 1;   // 0 = flyout, 1 = wizard, 2 = dialog
+    in-out property <bool> dev-chrome: true;   // hidden in snapshot mode
+    in-out property <int> wizard-step: 1;      // which onboarding step to show
+    in-out property <int> dialog: 1;           // 1 blind · 2 stranded · 3 ddc · 4 partial · 5 switching · 6 degraded
+    in-out property <int> switching-state: 0;  // SwitchingDialog state for the preview
+
+    in-out property <[MonitorRow]> monitors: [
+        { name: "Left 27\"", spec: "DP-1 · 1440p", active: 0, switching: false },
+        { name: "Center 32\"", spec: "HDMI-2 · 4K", active: 1, switching: false },
+        { name: "Right 27\"", spec: "DP-2 · 1440p", active: 0, switching: false },
+    ];
+
+    // Simulates the honest async switch in the dev preview: a click puts the row in `switching`,
+    // and the owner flips only when this "settle" fires — never optimistically on click (§6.1).
+    property <int> pending-mon: -1;
+    property <int> pending-peer: -1;
+    settle := Timer {
+        interval: 1400ms;
+        running: false;
+        triggered => {
+            if (root.pending-mon >= 0) {
+                root.monitors[root.pending-mon].active = root.pending-peer;
+                root.monitors[root.pending-mon].switching = false;
+                root.pending-mon = -1;
+            }
+            self.running = false;
+        }
+    }
+
+    VerticalLayout {
+        padding: 18px;
+        spacing: 14px;
+        alignment: start;
+
+        // ---- dev switcher ----
+        if dev-chrome : HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+            for opt[i] in ["Flyout", "Wizard"]: Rectangle {
+                width: 74px; height: 26px; border-radius: 6px;
+                background: screen == i ? Theme.accent-soft : Theme.layer;
+                border-width: 1px;
+                border-color: screen == i ? Theme.accent-soft-stroke : Theme.ctl-stroke;
+                TouchArea { clicked => { screen = i; } }
+                Text { text: opt; color: screen == i ? Theme.accent-text : Theme.text2; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            Rectangle {
+                width: 96px; height: 26px; border-radius: 6px;
+                background: Theme.layer; border-width: 1px; border-color: Theme.ctl-stroke;
+                TouchArea { clicked => { Theme.dark = !Theme.dark; } }
+                Text { text: Theme.dark ? "Light mode" : "Dark mode"; color: Theme.text2; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+            }
+        }
+
+        if screen == 0: TrayFlyout {
+            online-count: 3;
+            monitors: root.monitors;
+            peers: [
+                { label: "Work", color: Theme.pc-work },
+                { label: "Gam", color: Theme.pc-gaming },
+                { label: "Lab", color: Theme.pc-homelab },
+            ];
+            presets: [
+                { name: "Trading", active: true },
+                { name: "Work", active: false },
+                { name: "Couch", active: false },
+            ];
+            toggle-theme => { Theme.dark = !Theme.dark; }
+            // Honest flow: enter the in-flight state now; the owner flips when `settle` confirms.
+            switch(mi, pi) => {
+                if (mi != root.pending-mon) {
+                    root.monitors[mi].switching = true;
+                    root.pending-mon = mi;
+                    root.pending-peer = pi;
+                    settle.running = true;
+                }
+            }
+            apply-preset(pi) => { }
+        }
+
+        if screen == 1: OnboardingWizard {
+            step <=> root.wizard-step;
+            close => { }
+        }
+
+        if screen == 2 && dialog == 1: BlindDialog { }
+        if screen == 2 && dialog == 2: StrandedDialog { }
+        if screen == 2 && dialog == 3: DdcDialog { }
+        if screen == 2 && dialog == 4: PartialDialog { }
+        if screen == 2 && dialog == 5: SwitchingDialog { state: root.switching-state; }
+        if screen == 2 && dialog == 6: DegradedDialog { }
+
+        if screen == 3: DeskMap { }
+        if screen == 4: Settings { }
+    }
+}
