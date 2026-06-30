@@ -10,8 +10,8 @@ Legend: ✅ done in code (tested) · ⬜ needs you (hardware / LAN / GUI / decis
 
 ## M0 — Hardware feasibility spike
 - ✅ Spike records a **formal verdict row** and appends it to [hardware/pull-to-self-verdicts.md](hardware/pull-to-self-verdicts.md).
-- ⬜ Run pull-to-self on **≥ 2 distinct PC/monitor rigs**; record each verdict.
-- ⬜ Write the **GO / NO-GO** decision in the verdict log; tick DoD line 514.
+- ✅ **Pull-to-self CONFIRMED** on the AOC 27P2DG5 across 2 PCs (laptop/HDMI ↔ desktop/DP), bidirectional, via the live agent (2026-06-30). **GO (provisional)** recorded in the verdict log.
+- ⬜ Record **≥ 1 more distinct rig** (different panel/GPU) to fully close M0 + tick DoD line 514.
 
 ## M1 — Local DDC core
 - ✅ Soft-brick guard **property test** (`screenhop-core`, randomized: never writes a blocked/unconfirmed value).
@@ -27,7 +27,7 @@ Legend: ✅ done in code (tested) · ⬜ needs you (hardware / LAN / GUI / decis
 - ✅ **Discovery**: manual hosts (fully tested) + **mDNS** via `mdns-sd` (register + browse), merged/deduped.
 - ✅ **Announce/Heartbeat** handled → peer presence/liveness registry.
 - ✅ **Lease-mid-switch** behavioural test: lease is held for the whole switch (simulated hang) and blocks other peers; freed after.
-- ⬜ Verify **mDNS actually discovers a peer on your LAN** (two machines, multicast allowed).
+- ✅ **mDNS discovery verified on a real LAN** — two PCs find each other and stay connected ("2 online").
 
 ## M4 — Orchestration & presets
 - ✅ **Preset executor** (`execute_plan`): runs ops best-effort, collects per-monitor partial-failure results.
@@ -45,7 +45,7 @@ Legend: ✅ done in code (tested) · ⬜ needs you (hardware / LAN / GUI / decis
 - ⬜ **Active-console-session guard (D11)**: don't actuate from a locked/RDP/Session-0 context — not yet enforced (needs `WTSGetActiveConsoleSessionId`); documented in `installer/README.md`.
 - ⬜ **Claude Design** review/approval; confirm shipped UI **matches** the mockups (D12).
 - ⬜ **Onboarding ≤ 10 min** on a 2-PC rig; capture the **soak §4.7 numbers** via the harness.
-- ⬜ **End-to-end run on a 2-PC rig**: two PCs + a shared monitor, set `mesh-secret`, `--calibrate`, then a tray click moves the panel. (This is the big one — only verifiable on real hardware.)
+- ✅ **End-to-end 2-PC switch VERIFIED** (2026-06-30): two PCs + a shared AOC; a tray click on either PC moves the panel both directions over the mesh with real DDC. The core product works on hardware.
 
 ## M6 — Packaging & OSS readiness
 - ✅ **License**: single **MIT** (`LICENSE`), matching Cargo.toml.

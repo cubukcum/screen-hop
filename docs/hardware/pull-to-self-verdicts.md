@@ -29,7 +29,8 @@ the repo root. If it can't find this file, paste the printed row in by hand.
 | Date | Rig (PC · OS · GPU) | Monitor (mfr · model) | monitor_id | Cable/port | 0x60 | Result | Settle | Notes |
 |------|--------------------|-----------------------|------------|------------|------|--------|--------|-------|
 <!-- VERDICT-ROWS: the spike inserts new rows directly below this line -->
-| _prior_ | maintainer · Windows · (unrecorded GPU) | AOC · 27P2DG5 | (not captured) | (not captured) | — | PASS | — | Informal pre-spike result migrated from the spike README; **re-run via the spike to formalize** (capture monitor_id, cable, value). |
+| 2026-06-30 | 2-PC: laptop (Win11, NVIDIA) **HDMI** + desktop **DisplayPort** | AOC · 27P2DG5 | 61b399c7813f | HDMI=0x11, DP=0x0F | PASS | ~ok | Confirmed **bidirectional** via the live agent end-to-end: a tray click moves the shared panel laptop↔desktop over the LAN mesh. Read-back matched the written value each way (observed 0x11→PC-A, 0x0F→PC-B). |
+| _prior_ | maintainer · Windows · (unrecorded GPU) | AOC · 27P2DG5 | (not captured) | (not captured) | — | PASS | — | Informal pre-spike result migrated from the spike README; superseded by the formal 2-PC row above. |
 
 > `Result` legend: **PASS** = monitor switched back to this machine while not shown ·
 > **FAIL** = pull-to-self did not work (panel needs push-release fallback) ·
@@ -37,16 +38,13 @@ the repo root. If it can't find this file, paste the printed row in by hand.
 
 ## Go/no-go decision
 
-**Status: ⏳ PENDING** — needs **≥ 2 distinct rigs** recorded above with non-`_prior_` verdicts.
+**Status: ✅ GO (provisional)** — pull-to-self is **confirmed working end-to-end** on the AOC
+27P2DG5 across two PCs (laptop/HDMI ↔ desktop/DisplayPort), bidirectionally, via the live agent on
+2026-06-30. The primary architecture (pull-to-self) is viable on real hardware.
 
-When the bar is met, write the decision here, e.g.:
-
-> **GO** — pull-to-self confirmed on _N_ rigs (list them). Push-release retained as the
-> per-monitor fallback for panels that FAIL. Decision recorded by _name_ on _date_.
-
-…or, if the hardware says otherwise:
-
-> **NO-GO / revise** — pull-to-self failed on _…_; reconsider default direction. _Rationale._
+Provisional because it's **one panel so far**: record **≥ 1 more distinct rig** (different
+GPU/cable/panel) to fully close M0 and tick DoD line 514. Push-release is retained as the per-monitor
+fallback for any panel that FAILs.
 
 ## Maintainer checklist (the part only you can do)
 

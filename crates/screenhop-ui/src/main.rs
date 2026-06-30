@@ -122,6 +122,18 @@ fn run_calibrate() -> std::io::Result<()> {
     for (id, label) in &monitors {
         match read_input_retry(&mut driver, id) {
             Some(v) => {
+                // Guard against the classic trap: calibrating while the monitor is showing ANOTHER
+                // PC records that PC's input as "ours". If a saved value changes, flag it loudly —
+                // a legit re-cable changes it too, but usually it means the wrong PC was shown.
+                if let Some(prev) = cal.confirmed_value(&me, id) {
+                    if prev != v {
+                        println!(
+                            "  [warn] {label}: value changed 0x{prev:02X} -> 0x{v:02X}. If you did \
+                             NOT re-cable, make sure THIS PC is the one shown on it — you may be \
+                             saving another PC's input by mistake."
+                        );
+                    }
+                }
                 cal.record(&me, id, v);
                 println!("  [ok]   {label} ({id}) = 0x{v:02X}");
             }
