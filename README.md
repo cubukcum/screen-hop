@@ -65,8 +65,9 @@ This is a **pre-1.0, in-progress** project, built and developed in the open.
   routes a tray click into a real DDC switch — **142 passing tests**, `cargo fmt` + `clippy -D
   warnings` clean, with CI (including a no-admin Windows installer build).
 - 🚧 **Validated on one rig so far.** Still in progress: **broader hardware coverage** (more panels /
-  GPUs), the in-window onboarding wizard (today: `mesh-secret` file + `--calibrate`), the
-  active-console-session guard, code-signing, and confirming CI on GitHub's runners. See
+  GPUs), the rest of the in-window onboarding wizard (Step 1 pairing works; monitor-probe / calibrate
+  / names steps still use `--calibrate` + design placeholders), the active-console-session guard,
+  code-signing, and confirming CI on GitHub's runners. See
   [docs/REMAINING-CHECKLIST.md](docs/REMAINING-CHECKLIST.md).
 
 The exact "done in code vs. needs verification" breakdown lives in

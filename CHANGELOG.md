@@ -12,6 +12,9 @@
 - **Live agent** (`screenhop-ui --live`): joins the LAN mesh and routes a tray click into a real
   DDC/CI input switch (pull-to-self), with discovery (mDNS + manual hosts), per-monitor lease
   locking, and a tray driven by live mesh state (in-flight feedback, ownership, degraded).
+- **First-run pairing in the window**: on first launch with no mesh secret, the onboarding wizard
+  opens; typing a shared passphrase pairs this PC (saved as the `mesh-secret`) and relaunches into
+  the live mesh — no hand-created file required. (Wizard Steps 2–4 are still design-only.)
 - **Calibration** (`screenhop-ui --calibrate`): learns and persists this PC's input value per panel.
 - **Persistence**: per-user config directory with atomic writes — identity, mesh secret, TOFU pins,
   calibration, labels, config.
@@ -30,7 +33,9 @@
 - **Verified on one panel / one 2-PC setup so far** — needs broader hardware coverage.
 - Monitors behind a **USB-C hub/dock** that hides EDID need a `monitor_aliases` entry (see
   `--monitors`); a panel whose identified handle is read-only on one PC may need the alias too.
-- In-window onboarding wizard not wired (use the `mesh-secret` file + `--calibrate`).
+- In-window onboarding wizard is **partial**: Step 1 pairing works (first run → type a shared
+  passphrase → paired, no file needed); the rest (monitor probe, calibrate, names) is still
+  design-only — use `--calibrate` for calibration for now.
 - No active-console-session guard yet — don't rely on it over RDP or a locked screen (D11).
 - `WM_DISPLAYCHANGE` hook not wired (the periodic sweep covers external changes within ~4 s).
 - Secrets stored in plaintext on disk (OS-keystore / DPAPI wrapping is a follow-up).

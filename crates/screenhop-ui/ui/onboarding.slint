@@ -279,7 +279,13 @@ component MonNameCard inherits Rectangle {
 // Onboarding wizard — chrome + 4-step stepper + step content + footer (DESIGN-SPEC "Onboarding").
 export component OnboardingWizard inherits Rectangle {
     in-out property <int> step: 1;   // 1..4
+    // The shared group passphrase the user types on Step 1 (bound to the join field). In --live mode
+    // Rust reads this on `pair()` and writes it as the mesh secret.
+    in-out property <string> pair-secret;
     callback close();
+    // Fired when the user commits the passphrase (Pair button or Enter). Rust saves the secret and
+    // relaunches into the live mesh; the design preview leaves it unhandled.
+    callback pair();
 
     width: 600px;
     border-radius: 9px;
@@ -395,7 +401,8 @@ export component OnboardingWizard inherits Rectangle {
                     Rectangle { horizontal-stretch: 1; height: 1px; background: Theme.stroke; y: (parent.height - self.height)/2; }
                 }
 
-                // join code input + Pair
+                // join field (shared passphrase) + Pair. The same passphrase on every PC forms the
+                // group; in --live mode Rust saves it as the mesh secret and reconnects.
                 HorizontalLayout {
                     spacing: 8px;
                     Rectangle {
@@ -404,13 +411,31 @@ export component OnboardingWizard inherits Rectangle {
                         border-radius: 6px;
                         background: Theme.layer;
                         border-width: 1px;
-                        border-color: Theme.ctl-stroke;
+                        border-color: pw.has-focus ? Theme.accent : Theme.ctl-stroke;
                         HorizontalLayout {
                             padding-left: 11px;
-                            Text { text: "HOP-____-____"; color: Theme.text3; font-size: 13px; font-family: Theme.font-mono; vertical-alignment: center; }
+                            padding-right: 11px;
+                            pw := TextInput {
+                                text <=> root.pair-secret;
+                                color: Theme.text;
+                                font-size: 13px;
+                                font-family: Theme.font-mono;
+                                vertical-alignment: center;
+                                single-line: true;
+                                accepted => { root.pair(); }
+                            }
+                        }
+                        // Placeholder (TextInput has no native one): show only while empty + unfocused.
+                        if root.pair-secret == "" && !pw.has-focus : Text {
+                            x: 11px;
+                            text: "shared passphrase";
+                            color: Theme.text3;
+                            font-size: 13px;
+                            font-family: Theme.font-mono;
+                            vertical-alignment: center;
                         }
                     }
-                    Btn { label: "Pair"; primary: true; h: 34px; }
+                    Btn { label: "Pair"; primary: true; h: 34px; clicked => { root.pair(); } }
                 }
 
                 // add a host manually (summary)

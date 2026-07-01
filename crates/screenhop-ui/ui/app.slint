@@ -45,6 +45,12 @@ export component AppWindow inherits Window {
     callback switch(int, int);
     callback apply-preset(int);
 
+    // Onboarding: the passphrase typed on the wizard's Pair step, and the events Rust handles in
+    // --live mode (save the secret + relaunch into the mesh, or dismiss the first-run wizard).
+    in-out property <string> wizard-secret;
+    callback wizard-pair();
+    callback wizard-close();
+
     // Simulates the honest async switch in the dev preview: a click puts the row in `switching`,
     // and the owner flips only when this "settle" fires — never optimistically on click (§6.1).
     property <int> pending-mon: -1;
@@ -112,7 +118,9 @@ export component AppWindow inherits Window {
 
         if screen == 1: OnboardingWizard {
             step <=> root.wizard-step;
-            close => { }
+            pair-secret <=> root.wizard-secret;
+            pair => { root.wizard-pair(); }
+            close => { root.wizard-close(); }
         }
 
         if screen == 2 && dialog == 1: BlindDialog { }

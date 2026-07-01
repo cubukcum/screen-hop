@@ -54,9 +54,23 @@ fn main() -> Result<(), slint::PlatformError> {
         return Ok(());
     }
     if args.iter().any(|a| a == "--live") {
-        return run_live();
+        // The first-run wizard saves a mesh secret then asks us to relaunch, so the normal live
+        // path below picks the secret up and brings the mesh online (no deferred-startup gymnastics).
+        loop {
+            match run_live()? {
+                LiveExit::Quit => return Ok(()),
+                LiveExit::Relaunch => continue,
+            }
+        }
     }
     run_preview(&args)
+}
+
+/// How a `--live` session ended: the user quit, or they just paired via the first-run wizard and we
+/// should relaunch so the mesh comes up with the freshly-saved secret.
+enum LiveExit {
+    Quit,
+    Relaunch,
 }
 
 /// Diagnostic: dump every display handle this machine enumerates, with its full identity fields and
@@ -265,7 +279,7 @@ fn reconcile_loop(
 }
 
 /// Live mode: the real agent.
-fn run_live() -> Result<(), slint::PlatformError> {
+fn run_live() -> Result<LiveExit, slint::PlatformError> {
     let app = AppWindow::new()?;
     app.set_screen(0); // tray flyout
 
@@ -273,7 +287,7 @@ fn run_live() -> Result<(), slint::PlatformError> {
         Ok(d) => d,
         Err(e) => {
             eprintln!("screen-hop --live: cannot open config dir: {e}");
-            return app.run();
+            return app.run().map(|()| LiveExit::Quit);
         }
     };
     let identity = persist::load_or_create_identity(&config_dir).unwrap_or_else(|e| {
@@ -323,14 +337,10 @@ fn run_live() -> Result<(), slint::PlatformError> {
         eprintln!("screen-hop --live: no DDC/CI monitors found (enable DDC/CI in the OSD).");
     }
 
-    // A mesh secret is required to form the mesh. Without one, show monitors read-only.
+    // A mesh secret is required to form the mesh. First run (no secret) → onboarding wizard, so a
+    // new user can pair from the window instead of hand-creating a file.
     let Some(secret) = secret else {
-        eprintln!(
-            "screen-hop --live: no mesh secret. Showing monitors read-only. Write a shared secret \
-             to {}\\mesh-secret on each PC to enable switching.",
-            config_dir.display()
-        );
-        return run_readonly(app, identity.peer_id(), &monitor_ids, &labels);
+        return run_first_run_wizard(app, &config_dir);
     };
 
     // --- mesh node + agent ----------------------------------------------------------------------
@@ -344,7 +354,7 @@ fn run_live() -> Result<(), slint::PlatformError> {
         Ok(l) => l,
         Err(e) => {
             eprintln!("screen-hop --live: cannot bind port {}: {e}", cfg.port);
-            return run_readonly(app, me, &monitor_ids, &labels);
+            return run_readonly(app, me, &monitor_ids, &labels).map(|()| LiveExit::Quit);
         }
     };
     let self_addr: SocketAddr = ([127, 0, 0, 1], cfg.port).into();
@@ -494,7 +504,56 @@ fn run_live() -> Result<(), slint::PlatformError> {
         });
     }
 
-    app.run()
+    app.run().map(|()| LiveExit::Quit)
+}
+
+/// First-run onboarding: no mesh secret yet. Show the wizard's Pair step; when the user commits a
+/// passphrase, save it (same `mesh-secret` format as the CLI) and ask `main()` to relaunch so the
+/// normal live path brings the mesh up. Closing the wizard just exits — the user can also drop a
+/// `mesh-secret` file in by hand (the classic path).
+fn run_first_run_wizard(
+    app: AppWindow,
+    config_dir: &std::path::Path,
+) -> Result<LiveExit, slint::PlatformError> {
+    app.set_screen(1); // onboarding wizard
+    app.set_wizard_step(1); // Pair
+
+    let relaunch = Rc::new(std::cell::Cell::new(false));
+    {
+        let app_weak = app.as_weak();
+        let config_dir = config_dir.to_path_buf();
+        let relaunch = Rc::clone(&relaunch);
+        app.on_wizard_pair(move || {
+            let Some(app) = app_weak.upgrade() else {
+                return;
+            };
+            let secret = app.get_wizard_secret().trim().to_string();
+            if secret.is_empty() {
+                return; // nothing typed yet — ignore the click/Enter
+            }
+            if let Err(e) = persist::save_secret(&config_dir, &secret) {
+                eprintln!("screen-hop --live: could not save mesh secret: {e}");
+                return;
+            }
+            relaunch.set(true);
+            let _ = slint::quit_event_loop();
+        });
+    }
+    app.on_wizard_close(|| {
+        let _ = slint::quit_event_loop();
+    });
+
+    println!(
+        "screen-hop --live: first run — enter the SAME shared passphrase on each PC to pair, or drop \
+         a `mesh-secret` file into {} by hand.",
+        config_dir.display()
+    );
+    app.run()?;
+    Ok(if relaunch.get() {
+        LiveExit::Relaunch
+    } else {
+        LiveExit::Quit
+    })
 }
 
 /// Read-only fallback: show the enumerated monitors with no mesh (no secret / bind failure).

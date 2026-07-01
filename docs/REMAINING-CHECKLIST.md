@@ -47,7 +47,12 @@ Legend: ✅ done in code (tested) · ⬜ needs you (hardware / LAN / GUI / decis
 - ✅ **Controller + bind layer + data-driven tray** (tested): Slint reads `AppWindow` inputs and its callbacks are Rust-overridable; `bind` does index↔id translation.
 - ✅ **Live agent** (`screenhop-ui -- --live`): actuator thread (owns the non-`Send` driver) + mesh `Node` (serve + discovery) + worker that routes tray clicks as real mesh switches; a `Timer` polls `MeshState` to refresh monitors/peers/online/degraded with in-flight feedback. Read-only fallback when no mesh secret.
 - ✅ **Calibration** (`screenhop-ui -- --calibrate`): learns + persists this peer's `0x60` per panel (what makes switches actually fire).
-- ⬜ **GUI onboarding wizard** wiring (pair / calibrate / label *in the window*) — today pairing is `mesh-secret` file + `--calibrate`; the wizard surfaces exist as design but aren't wired to the backend.
+- 🟡 **GUI onboarding wizard** — **Step 1 (Pair) is wired** (Phase 1): first run with no secret opens
+  the wizard; typing a shared passphrase + Pair saves the `mesh-secret` (same format as the CLI/file)
+  and relaunches straight into the live mesh — no hand-created file needed. Still design-only: Step 1's
+  code/QR/discovered-peer chrome (aspirational — the real model is one shared passphrase), Step 2
+  monitor probe, Step 3 calibrate matrix, Step 4 rename→labels. Follow-ups: Phase 2 (Step 2 real
+  probe), Phase 3 (Step 4 rename). `--calibrate` still used for calibration for now.
 - ⬜ **Active-console-session guard (D11)**: don't actuate from a locked/RDP/Session-0 context — not yet enforced (needs `WTSGetActiveConsoleSessionId`); documented in `installer/README.md`.
 - ⬜ **Claude Design** review/approval; confirm shipped UI **matches** the mockups (D12).
 - ⬜ **Onboarding ≤ 10 min** on a 2-PC rig; capture the **soak §4.7 numbers** via the harness.
