@@ -5,7 +5,7 @@ click, without reaching for each monitor's input-source button.**
 
 [![CI](https://github.com/cubukcum/screen-hop/actions/workflows/ci.yml/badge.svg)](https://github.com/cubukcum/screen-hop/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
-![rustc 1.82+](https://img.shields.io/badge/rustc-1.82%2B-orange.svg)
+![rustc 1.92+](https://img.shields.io/badge/rustc-1.92%2B-orange.svg)
 ![platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
 ![status: pre-1.0](https://img.shields.io/badge/status-pre--1.0-yellow.svg)
 
@@ -83,7 +83,8 @@ only; reads are unreliable).
 
 ## Build & run
 
-Requires Rust **1.82+** (the workspace MSRV).
+Requires a recent stable Rust — **1.92+** (the floor is set by the Slint UI stack, not our own
+code). CI builds and tests on current stable.
 
 ```sh
 cargo build --workspace

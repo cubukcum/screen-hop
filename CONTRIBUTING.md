@@ -13,7 +13,7 @@ written; a quirk can *restrict* but never *authorize* a write).
 
 ## Prerequisites
 
-- Rust **1.82+** (the workspace MSRV — CI builds on exactly 1.82 as well as stable).
+- Rust **1.92+** (the floor is set by the Slint UI stack; CI builds on current stable).
 - Windows is the primary target; the pure-logic crates build and test on any platform.
 
 ## Build & test

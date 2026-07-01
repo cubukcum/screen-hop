@@ -34,17 +34,6 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
-  msrv:
-    name: build on MSRV (1.82)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      # The workspace MSRV is 1.82 (uses Option::is_none_or). Building here keeps us honest.
-      - uses: dtolnay/rust-toolchain@1.82.0
-      - uses: Swatinem/rust-cache@v2
-      - name: Build (workspace)
-        run: cargo build --workspace
-
   package:
     name: package + hashes (windows)
     runs-on: windows-latest

@@ -26,7 +26,7 @@
 - **Orchestration**: named presets (best-effort, partial-failure surfaced), blind-point warning,
   stranded + DDC-disabled states, partition guard.
 - **Soft-brick guard** with a property test; measurement/soak harness skeleton.
-- CI (build / test / clippy / fmt + MSRV-1.82 + binaries + installer, all with SHA-256), MIT
+- CI (build / test / clippy / fmt on stable + binaries + installer, all with SHA-256), MIT
   license, and contributor + security docs.
 
 ### Known limitations / not yet done

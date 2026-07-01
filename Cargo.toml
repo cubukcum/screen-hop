@@ -16,9 +16,11 @@ members = [
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/screen-hop/screen-hop"
-# MSRV: raised to 1.82 — the codebase uses `Option::is_none_or` (stabilized in 1.82). CI's
-# build-on-MSRV job must use this toolchain.
-rust-version = "1.82"
+# MSRV is dictated by the Slint UI stack, not our own code: i-slint-* 1.17 requires rustc 1.92
+# (other deps need 1.86–1.88). Our crates themselves build on much older Rust, but the GUI can't,
+# so a low MSRV isn't honestly supportable. CI builds/tests on current stable; this documents the
+# real floor for anyone building from source.
+rust-version = "1.92"
 
 # Centralized versions for third-party deps so security-sensitive crates (crypto, DDC) are pinned
 # in one place rather than ad-hoc per crate. Crates opt in via `dep = { workspace = true }`.
