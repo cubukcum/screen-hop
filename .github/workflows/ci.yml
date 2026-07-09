@@ -34,33 +34,9 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
-  package:
-    name: package + hashes (windows)
-    runs-on: windows-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Release build
-        run: cargo build --release -p screenhop-ui -p screenhop-spike
-      - name: SHA-256 the binaries
-        shell: pwsh
-        run: |
-          $bins = "target/release/screenhop-ui.exe", "target/release/screenhop-spike.exe"
-          Get-FileHash $bins -Algorithm SHA256 |
-            ForEach-Object { "{0}  {1}" -f $_.Hash, [System.IO.Path]::GetFileName($_.Path) } |
-            Tee-Object -FilePath SHA256SUMS.txt
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenhop-windows
-          path: |
-            target/release/screenhop-ui.exe
-            target/release/screenhop-spike.exe
-            SHA256SUMS.txt
-          if-no-files-found: error
-
+  # The installer is the ONE user-facing download (it bundles screenhop-ui.exe and the spike
+  # tool inside). We deliberately don't publish loose .exes — three unlabeled binaries on a
+  # release page confused testers about which one to run.
   installer:
     name: installer (windows)
     runs-on: windows-latest

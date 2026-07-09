@@ -61,7 +61,7 @@ Legend: ✅ done in code (tested) · ⬜ needs you (hardware / LAN / GUI / decis
 
 ## M6 — Packaging & OSS readiness
 - ✅ **License**: single **MIT** (`LICENSE`), matching Cargo.toml.
-- ✅ **CI** ([.github/workflows/ci.yml](../.github/workflows/ci.yml)): fmt + clippy + build + test on `windows-latest` (current stable), a release job (binaries + SHA-256), and an **installer** job (Inno Setup via choco → installer + SHA-256). (The old pinned MSRV-1.82 job was dropped — the Slint UI stack requires rustc 1.92, so a low MSRV isn't supportable.)
+- ✅ **CI** ([.github/workflows/ci.yml](../.github/workflows/ci.yml)): fmt + clippy + build + test on `windows-latest` (current stable), plus an **installer** job (Inno Setup via choco → `screen-hop-setup.exe` + SHA-256) — the **one** user-facing download; the installer bundles `screenhop-ui.exe` and the spike tool inside. (Dropped: the pinned MSRV-1.82 job — Slint requires rustc 1.92 — and the loose-binaries job, which confused testers with three unlabeled `.exe`s on the release page.)
 - ✅ **Installer** ([installer/screen-hop.iss](../installer/screen-hop.iss)): per-user, **no-admin**, opt-in `HKCU\…\Run` autostart, clean uninstall (keeps config). Build/usage in [installer/README.md](../installer/README.md).
 - ✅ **Docs**: `CONTRIBUTING.md`, `SECURITY.md` (DPAPI caveat), `docs/contributing-quirks.md`, installer docs.
 - ⬜ Push and confirm **CI is green** on GitHub's runners (incl. the new installer job building under ISCC).
