@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.1-alpha — no more stray console window (pre-release)
 
 ### Fixed
 - **No more stray console window.** The app is now built for the Windows GUI subsystem, so
