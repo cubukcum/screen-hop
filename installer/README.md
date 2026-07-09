@@ -34,6 +34,11 @@ Output: `installer\dist\screen-hop-setup.exe`. CI builds this on every push (the
 2. **Calibrate**, with this PC shown on the panels: `screenhop-ui --calibrate`.
 3. Launch `screenhop-ui --live` (autostart does this for you).
 
+> **Note:** screen-hop is a windowed app (no console window of its own). When you run a CLI mode
+> like `--calibrate` or `--monitors` from PowerShell, the prompt may come back **before** the
+> output prints — that's normal; the output still appears right after. Press Enter to get a clean
+> prompt back.
+
 ## Config location
 
 `%APPDATA%\screen-hop\config` — `identity.key`, `mesh-secret`, `pins.json`, `calibration.json`,

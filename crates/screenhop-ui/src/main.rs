@@ -6,6 +6,11 @@
 //! - `--live`: the real agent — enumerate this machine's monitors, join the LAN mesh, and route
 //!   tray clicks into actual DDC switches. Verified on a 2-PC rig (see docs/REMAINING-CHECKLIST.md).
 
+// GUI subsystem: without this, Windows allocates a console window for the app (Rust's default is
+// the console subsystem), and closing that stray window kills the whole process. CLI modes stay
+// usable because main() re-attaches to the parent console before printing anything.
+#![windows_subsystem = "windows"]
+
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::net::{SocketAddr, TcpListener};
@@ -40,7 +45,25 @@ fn wall_ms() -> u64 {
         .unwrap_or(0)
 }
 
+/// A `windows_subsystem = "windows"` exe gets no console at all, which would make the CLI modes
+/// (`--monitors`, `--calibrate`, `--shot`) silent when run from a terminal. Attach to the parent
+/// process's console so their output shows up again. Launched from the Start menu or autostart
+/// there is no parent console and the call fails as a harmless no-op; handles that the shell
+/// redirected explicitly (pipes, files) are inherited as usual and unaffected by this.
+fn attach_parent_console() {
+    #[cfg(windows)]
+    unsafe {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn AttachConsole(process_id: u32) -> i32;
+        }
+        const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
+        AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+}
+
 fn main() -> Result<(), slint::PlatformError> {
+    attach_parent_console();
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--calibrate") {
         if let Err(e) = run_calibrate() {

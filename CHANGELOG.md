@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **No more stray console window.** The app is now built for the Windows GUI subsystem, so
+  launching it (Start menu, autostart, installer's "launch now") no longer opens a terminal
+  window whose closing killed the app. CLI modes (`--monitors`, `--calibrate`) still print when
+  run from a terminal — the process re-attaches to the parent console at startup.
+
 ## v0.1.0-alpha — first agent build (pre-release)
 
 > ⚠️ **Pre-release / alpha.** The core feature is **verified working on real hardware**: a tray click
