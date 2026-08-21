@@ -18,9 +18,13 @@ use screenhop_state::{LockManager, LockOutcome, OwnershipMap, DEFAULT_LEASE_MS};
 
 use crate::peers::PeerRegistry;
 
-/// Inbound read timeout — must be shorter than the 30 s lease TTL (D5) and bounds the
+/// Handshake/inbound idle timeout — must be shorter than the 30 s lease TTL (D5) and bounds the
 /// pre-auth stall an unpaired host could cause (net security review, HIGH finding).
-const READ_TIMEOUT: Duration = Duration::from_secs(10);
+const HANDSHAKE_READ_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// An authenticated outbound switch may legitimately consume the executor's 15-second ceiling.
+/// Give its reply a small transport margin without weakening the shorter inbound/pre-auth guard.
+const OUTBOUND_REPLY_TIMEOUT: Duration = Duration::from_secs(25);
 
 /// Outbound TCP connect timeout. Discovery often surfaces multiple addresses per peer (real LAN IP
 /// plus virtual adapters from Hyper-V/VMware/WSL/VPNs); a dead one would otherwise block on the OS
@@ -205,7 +209,7 @@ impl Node {
     /// Connect to a peer, complete the mutual handshake, and return a [`Session`] for messaging.
     pub fn connect(&self, addr: SocketAddr) -> Result<Session<TcpStream>, ConnectError> {
         let mut stream = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT)?;
-        stream.set_read_timeout(Some(READ_TIMEOUT))?;
+        stream.set_read_timeout(Some(HANDSHAKE_READ_TIMEOUT))?;
 
         let channel = SecureChannel::new(&self.key);
         let verified = run_handshake(
@@ -219,6 +223,7 @@ impl Node {
             RunHsError::Handshake(h) => ConnectError::Handshake(h),
             RunHsError::PinMismatch => ConnectError::PinMismatch,
         })?;
+        stream.set_read_timeout(Some(OUTBOUND_REPLY_TIMEOUT))?;
 
         Ok(Session {
             conn: SecureConnection::new(stream, channel),
@@ -312,7 +317,7 @@ fn handle_connection(
     pins_path: Option<&Path>,
 ) -> Result<(), ()> {
     stream
-        .set_read_timeout(Some(READ_TIMEOUT))
+        .set_read_timeout(Some(HANDSHAKE_READ_TIMEOUT))
         .map_err(|_| ())?;
     let channel = SecureChannel::new(key);
     let verified = run_handshake(&mut stream, &channel, me, state, pins_path).map_err(|_| ())?;
@@ -479,10 +484,20 @@ fn switch_result(monitor_id: &str, outcome: &str) -> Message {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use screenhop_core::ActuationPolicy;
     use screenhop_state::DEFAULT_LEASE_MS;
 
     fn node(pass: &str) -> Node {
         Node::new(PeerIdentity::generate(), pass)
+    }
+
+    #[test]
+    fn outbound_reply_window_covers_the_executor_ceiling_without_outliving_the_lease() {
+        let policy = ActuationPolicy::new(std::iter::empty::<u32>(), std::iter::empty::<u32>());
+        let executor_ceiling = Duration::from_millis(u64::from(policy.ceiling_ms));
+        let lease = Duration::from_millis(DEFAULT_LEASE_MS);
+        assert!(OUTBOUND_REPLY_TIMEOUT > executor_ceiling);
+        assert!(OUTBOUND_REPLY_TIMEOUT < lease);
     }
 
     struct FakeActuator {

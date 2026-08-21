@@ -143,7 +143,7 @@ export component DeskMap inherits Rectangle {
                 VerticalLayout {
                     spacing: 1px;
                     Text { text: "Desk map"; color: Theme.text; font-size: 18px; font-weight: 600; }
-                    Text { text: "Lines show who drives what. Click a monitor to re-route it."; color: Theme.text3; font-size: 12px; }
+                    Text { text: "Read-only routing preview; use the live tray to switch monitors."; color: Theme.text3; font-size: 12px; }
                 }
                 Rectangle { horizontal-stretch: 1; }
                 VerticalLayout { alignment: center; Rectangle {
@@ -189,7 +189,7 @@ export component DeskMap inherits Rectangle {
                 spacing: 8px;
                 alignment: start;
                 VerticalLayout { alignment: center; InfoGlyph { tint: Theme.text3; } }
-                Text { text: "Hover a PC to highlight its cables · drag a cable end to another monitor to re-route."; color: Theme.text3; font-size: 11px; vertical-alignment: center; }
+                Text { text: "Preview only — cable interactions are not connected in this build."; color: Theme.text3; font-size: 11px; vertical-alignment: center; }
             }
         }
     }

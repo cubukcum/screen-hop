@@ -14,8 +14,8 @@ export component AppWindow inherits Window {
     default-font-family: "Segoe UI Variable Text";
     background: Theme.bg;
     in-out property <bool> dark <=> Theme.dark;
-    in-out property <int> screen: 1;   // 0 = flyout, 1 = wizard, 2 = dialog
-    in-out property <bool> dev-chrome: true;   // hidden in snapshot mode
+    in-out property <int> screen: 0;   // 0 = flyout, 1 = wizard, 2 = dialog
+    in-out property <bool> dev-chrome: false;   // opt-in design-preview controls
     in-out property <int> wizard-step: 1;      // which onboarding step to show
     in-out property <int> dialog: 1;           // 1 blind · 2 stranded · 3 ddc · 4 partial · 5 switching · 6 degraded
     in-out property <int> switching-state: 0;  // SwitchingDialog state for the preview
@@ -29,15 +29,14 @@ export component AppWindow inherits Window {
     // Tray inputs. The defaults drive the standalone design preview; in `--live` mode Rust
     // overrides these (set_peers / set_presets / on_switch / …) from the backend Controller.
     in-out property <[Peer]> peers: [
-        { label: "Work", color: Theme.pc-work },
-        { label: "Gam", color: Theme.pc-gaming },
-        { label: "Lab", color: Theme.pc-homelab },
+        { label: "Work", color: Theme.pc-work, enabled: true },
+        { label: "Gam", color: Theme.pc-gaming, enabled: true },
+        { label: "Lab", color: Theme.pc-homelab, enabled: true },
     ];
-    in-out property <[Preset]> presets: [
-        { name: "Trading", active: true },
-        { name: "Work", active: false },
-        { name: "Couch", active: false },
-    ];
+    in-out property <[Preset]> presets: [];
+    in-out property <bool> presets-enabled: false;
+    in-out property <bool> simulate-switches: false;
+    in-out property <bool> read-only-mode: false;
     in-out property <int> online-count: 3;
     in-out property <bool> degraded: false;
 
@@ -48,11 +47,10 @@ export component AppWindow inherits Window {
     // Onboarding: the passphrase typed on the wizard's Pair step, and the events Rust handles in
     // --live mode (save the secret + relaunch into the mesh, or dismiss the first-run wizard).
     in-out property <string> wizard-secret;
+    in-out property <string> wizard-error;
     callback wizard-pair();
     callback wizard-close();
 
-    // Simulates the honest async switch in the dev preview: a click puts the row in `switching`,
-    // and the owner flips only when this "settle" fires — never optimistically on click (§6.1).
     property <int> pending-mon: -1;
     property <int> pending-peer: -1;
     settle := Timer {
@@ -68,11 +66,8 @@ export component AppWindow inherits Window {
         }
     }
 
-    // Default (design-preview) switch behaviour: enter the honest in-flight state now; the owner
-    // flips only when `settle` confirms — never optimistically on click (§6.1). In --live mode Rust
-    // overrides this handler with a real mesh switch.
     switch(mi, pi) => {
-        if (mi != root.pending-mon) {
+        if root.simulate-switches && root.pending-mon < 0 {
             root.monitors[mi].switching = true;
             root.pending-mon = mi;
             root.pending-peer = pi;
@@ -111,6 +106,8 @@ export component AppWindow inherits Window {
             monitors: root.monitors;
             peers: root.peers;
             presets: root.presets;
+            presets-enabled: root.presets-enabled;
+            read-only-mode: root.read-only-mode;
             toggle-theme => { Theme.dark = !Theme.dark; }
             switch(mi, pi) => { root.switch(mi, pi); }
             apply-preset(pi) => { root.apply-preset(pi); }
@@ -119,6 +116,7 @@ export component AppWindow inherits Window {
         if screen == 1: OnboardingWizard {
             step <=> root.wizard-step;
             pair-secret <=> root.wizard-secret;
+            pair-error <=> root.wizard-error;
             pair => { root.wizard-pair(); }
             close => { root.wizard-close(); }
         }

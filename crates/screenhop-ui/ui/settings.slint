@@ -21,6 +21,7 @@ component Toggle inherits Rectangle {
     background: on ? Theme.accent : Theme.subtle;
     border-width: on ? 0px : 1px;
     border-color: Theme.ctl-stroke;
+    opacity: 0.5;
     Rectangle {
         width: 15px;
         height: 15px;
@@ -39,6 +40,7 @@ component Seg3 inherits Rectangle {
     border-width: 1px;
     border-color: Theme.ctl-stroke;
     background: Theme.subtle;
+    opacity: 0.5;
     HorizontalLayout {
         padding: 2px;
         spacing: 2px;
@@ -58,6 +60,7 @@ component NavItem inherits Rectangle {
     height: 34px;
     border-radius: 6px;
     background: active ? Theme.accent-soft : transparent;
+    opacity: active ? 1 : 0.5;
     if active : Rectangle { x: 0; y: 8px; width: 3px; height: 18px; border-radius: 2px; background: Theme.accent; }
     HorizontalLayout {
         padding-left: 10px;
@@ -151,6 +154,7 @@ export component Settings inherits Rectangle {
                     alignment: start;
 
                     Text { text: "General"; color: Theme.text; font-size: 16px; font-weight: 600; }
+                    Text { text: "Preview only — settings controls are not connected in this build."; color: Theme.text3; font-size: 11.5px; }
                     Rectangle { height: 12px; }
                     Rectangle {
                         border-radius: 9px;
@@ -163,21 +167,21 @@ export component Settings inherits Rectangle {
                                 icon: Ico.power;
                                 label: "Start with Windows";
                                 desc: "Launch to the system tray on sign-in";
-                                VerticalLayout { alignment: center; Toggle { on: true; } }
+                                VerticalLayout { alignment: center; Toggle { on: false; } }
                             }
                             InsetDiv { }
                             SRow {
                                 icon: Ico.sun;
                                 label: "Theme";
                                 desc: "";
-                                VerticalLayout { alignment: center; Seg3 { active: 1; } }
+                                VerticalLayout { alignment: center; Seg3 { active: -1; } }
                             }
                             InsetDiv { }
                             SRow {
                                 icon: Ico.keyboard;
                                 label: "Global hotkeys";
-                                desc: "Ctrl+Alt+1…4 apply presets from anywhere";
-                                VerticalLayout { alignment: center; Toggle { on: true; } }
+                                desc: "Not available in this build";
+                                VerticalLayout { alignment: center; Toggle { on: false; } }
                             }
                         }
                     }

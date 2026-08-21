@@ -14,18 +14,23 @@ export global Glyph {
 component DBtn inherits Rectangle {
     in property <string> label;
     in property <int> kind;
+    in property <bool> enabled: false;
     in property <length> h: 32px;
     callback clicked;
     height: h;
     width: t.preferred-width + 32px;
     border-radius: 6px;
-    background: kind == 1 ? Theme.accent : kind == 2 ? Theme.danger : Theme.subtle;
-    border-width: kind == 0 ? 1px : 0px;
+    background: enabled ? (kind == 1 ? Theme.accent : kind == 2 ? Theme.danger : Theme.subtle) : Theme.subtle;
+    border-width: !enabled || kind == 0 ? 1px : 0px;
     border-color: Theme.ctl-stroke;
-    ta := TouchArea { clicked => { root.clicked(); } }
+    opacity: enabled ? 1 : 0.5;
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
     t := Text {
         text: root.label;
-        color: kind == 0 ? Theme.text : #ffffff;
+        color: root.enabled && kind != 0 ? #ffffff : Theme.text2;
         font-size: 13px;
         font-weight: 600;
         horizontal-alignment: center;

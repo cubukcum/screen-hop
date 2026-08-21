@@ -3,6 +3,7 @@ import { Theme } from "theme.slint";
 export struct Peer {
     label: string,
     color: color,   // per-PC brand color (active segment fill)
+    enabled: bool,
 }
 
 export struct MonitorRow {
@@ -23,9 +24,12 @@ export component TrayFlyout inherits Rectangle {
     in property <[MonitorRow]> monitors;
     in property <[Peer]> peers;
     in property <[Preset]> presets;
+    in property <bool> presets-enabled: false;
+    in property <bool> read-only-mode: false;
     in property <int> online-count: 3;
     in property <bool> degraded: false;   // mesh partitioned — disruptive controls are paused
-    in-out property <int> selected-preset: 0;   // highlighted preset (click feedback)
+    property <bool> controls-disabled: degraded || read-only-mode;
+    in-out property <int> selected-preset: -1;   // highlighted preset (click feedback)
     callback toggle-theme();
     callback switch(int, int);    // (monitor-index, peer-index)
     callback apply-preset(int);
@@ -77,16 +81,16 @@ export component TrayFlyout inherits Rectangle {
             Rectangle {   // status pill — amber "Degraded" when the mesh is partitioned (§8.6)
                 height: 22px;
                 border-radius: 11px;
-                background: degraded ? Theme.warn-bg : Theme.accent-soft;
+                background: controls-disabled ? Theme.warn-bg : Theme.accent-soft;
                 HorizontalLayout {
                     padding-left: 9px;
                     padding-right: 10px;
                     spacing: 6px;
                     VerticalLayout {   // wrap so the dot centers on the cross axis
                         alignment: center;
-                        Rectangle { width: 6px; height: 6px; border-radius: 3px; background: degraded ? Theme.warn-accent : Theme.ok-dot; }
+                        Rectangle { width: 6px; height: 6px; border-radius: 3px; background: controls-disabled ? Theme.warn-accent : Theme.ok-dot; }
                     }
-                    Text { text: degraded ? "Degraded" : "\{online-count} online"; color: degraded ? Theme.warn-text : Theme.accent-text; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
+                    Text { text: read-only-mode ? "Read-only" : degraded ? "Degraded" : "\{online-count} online"; color: controls-disabled ? Theme.warn-text : Theme.accent-text; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
                 }
             }
         }
@@ -134,24 +138,37 @@ export component TrayFlyout inherits Rectangle {
                     }
                     if !m.switching : Rectangle {   // segmented control
                         height: 30px;
+                        width: min(142px, peer-segments.preferred-width);
                         border-radius: 8px;
                         background: Theme.subtle;
                         border-width: 1px;
                         border-color: Theme.ctl-stroke;
-                        HorizontalLayout {
+                        clip: true;
+                        opacity: root.controls-disabled ? 0.55 : 1;
+                        peer-segments := HorizontalLayout {
                             padding: 3px;
                             spacing: 2px;
                             for p[pi] in peers: Rectangle {
-                                width: 44px;
+                                min-width: 0px;
+                                preferred-width: min(88px, max(44px, peer-label.preferred-width + 14px));
+                                max-width: 88px;
                                 border-radius: 6px;
-                                background: pi == m.active ? p.color : (seg.has-hover ? Theme.stroke : transparent);
+                                opacity: p.enabled || pi == m.active ? 1 : 0.45;
+                                background: pi == m.active ? p.color : (seg.enabled && seg.has-hover ? Theme.stroke : transparent);
                                 animate background { duration: 110ms; }
-                                seg := TouchArea { clicked => { if !root.degraded { root.switch(mi, pi); } } }
-                                Text {
+                                seg := TouchArea {
+                                    enabled: p.enabled && !root.controls-disabled && pi != m.active;
+                                    clicked => { root.switch(mi, pi); }
+                                }
+                                peer-label := Text {
+                                    x: 2px;
+                                    width: parent.width - 4px;
+                                    height: parent.height;
                                     text: p.label;
                                     color: pi == m.active ? #ffffff : Theme.text2;
                                     font-size: 12px;
                                     font-weight: 600;
+                                    overflow: elide;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
                                 }
@@ -169,7 +186,17 @@ export component TrayFlyout inherits Rectangle {
         Rectangle { height: 1px; background: Theme.stroke; }
 
         // ---------------- presets ----------------
-        HorizontalLayout {
+        if presets.length == 0 : HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            padding-top: 11px;
+            padding-bottom: 13px;
+            spacing: 7px;
+            alignment: start;
+            Text { text: "PRESETS"; color: Theme.text3; font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; vertical-alignment: center; }
+            Text { text: "Not configured"; color: Theme.text3; font-size: 11.5px; vertical-alignment: center; }
+        }
+        if presets.length > 0 : HorizontalLayout {
             padding-left: 12px;
             padding-right: 12px;
             padding-top: 11px;
@@ -178,16 +205,21 @@ export component TrayFlyout inherits Rectangle {
             alignment: start;
             Text { text: "PRESETS"; color: Theme.text3; font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; vertical-alignment: center; }
             for p[pi] in presets: Rectangle {
+                property <bool> selected: root.selected-preset >= 0 ? pi == root.selected-preset : p.active;
                 height: 28px;
                 width: ptxt.preferred-width + 20px;
                 border-radius: 8px;
-                background: pi == root.selected-preset ? Theme.accent-soft : Theme.layer;
+                background: selected ? Theme.accent-soft : Theme.layer;
                 border-width: 1px;
-                border-color: pi == root.selected-preset ? Theme.accent-soft-stroke : Theme.ctl-stroke;
-                TouchArea { clicked => { if !root.degraded { root.selected-preset = pi; root.apply-preset(pi); } } }
+                border-color: selected ? Theme.accent-soft-stroke : Theme.ctl-stroke;
+                opacity: root.presets-enabled && !root.controls-disabled ? 1 : 0.5;
+                TouchArea {
+                    enabled: root.presets-enabled && !root.controls-disabled;
+                    clicked => { root.selected-preset = pi; root.apply-preset(pi); }
+                }
                 ptxt := Text {
                     text: p.name;
-                    color: pi == root.selected-preset ? Theme.accent-text : Theme.text;
+                    color: selected ? Theme.accent-text : Theme.text;
                     font-size: 12.5px;
                     font-weight: 600;
                     horizontal-alignment: center;

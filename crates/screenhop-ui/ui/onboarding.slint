@@ -5,20 +5,25 @@ import { StrokeIcon, InfoGlyph, IdentifyGlyph } from "icons.slint";
 component Btn inherits Rectangle {
     in property <string> label;
     in property <bool> primary: false;
+    in property <bool> enabled: true;
     in property <length> h: 32px;
     callback clicked;
     height: h;
     width: t.preferred-width + 34px;
     border-radius: 6px;
     background: primary
-        ? (ta.pressed ? #0c5e32 : Theme.accent)
-        : (ta.has-hover ? Theme.bg2 : Theme.subtle);
+        ? (enabled ? (ta.pressed ? #0c5e32 : Theme.accent) : Theme.subtle)
+        : (enabled && ta.has-hover ? Theme.bg2 : Theme.subtle);
     border-width: primary ? 0px : 1px;
     border-color: Theme.ctl-stroke;
-    ta := TouchArea { clicked => { root.clicked(); } }
+    opacity: enabled ? 1 : 0.5;
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
     t := Text {
         text: root.label;
-        color: primary ? #ffffff : Theme.text;
+        color: root.enabled && primary ? #ffffff : Theme.text;
         font-size: 13px;
         font-weight: 600;
         horizontal-alignment: center;
@@ -50,6 +55,7 @@ component MonitorProbeRow inherits Rectangle {
     in property <string> name;
     in property <string> model;
     in property <bool> ok;
+    opacity: 0.6;
     border-radius: 9px;
     background: ok ? Theme.layer : Theme.warn-bg;
     border-width: 1px;
@@ -100,7 +106,7 @@ component MonitorProbeRow inherits Rectangle {
                     Text { text: "DDC/CI"; color: Theme.accent-text; font-size: 11px; font-weight: 600; vertical-alignment: center; }
                 }
             }
-            if !ok : Text { text: "Fix"; color: Theme.warn-text; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
+            if !ok : Text { text: "Needs DDC/CI"; color: Theme.warn-text; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
         }
     }
 }
@@ -172,43 +178,44 @@ component CalRow inherits HorizontalLayout {
     CalStatusCell { kind: root.k2; }
 }
 
-// A look-alike monitor card for Step 4: a display preview (flashing gradient / idle),
-// a Flash button, and a name field. `active` = currently flashing/being identified.
+// A look-alike monitor card for the Step 4 layout preview. Actions remain visibly unavailable
+// until the real flash/name callbacks are connected.
 component MonNameCard inherits Rectangle {
-    in property <bool> active;
     in property <string> name;
+    property <bool> showing-active: false; // static preview: flash/name actions are not connected
+    opacity: 0.6;
     horizontal-stretch: 1;
     border-radius: 10px;
     background: Theme.layer;
-    border-width: active ? 2px : 1px;
-    border-color: active ? Theme.accent : Theme.stroke;
+    border-width: showing-active ? 2px : 1px;
+    border-color: showing-active ? Theme.accent : Theme.stroke;
     VerticalLayout {
         padding: 13px;
         spacing: 0px;
         Rectangle {
             height: 62px;
             border-radius: 7px;
-            background: active ? @linear-gradient(135deg, #107c41 0%, #0c5e32 100%) : (Theme.dark ? #ffffff14 : #e8e8e8);
-            if active : Path {
+            background: showing-active ? @linear-gradient(135deg, #107c41 0%, #0c5e32 100%) : (Theme.dark ? #ffffff14 : #e8e8e8);
+            if showing-active : Path {
                 width: 26px; height: 26px;
                 viewbox-width: 24; viewbox-height: 24;
                 fill: #ffffff;
                 commands: "M13 3 L4.5 13.5 L11 13.5 L10 21 L19 10 L12.5 10 Z";
             }
-            if !active : StrokeIcon { width: 24px; height: 24px; tint: Theme.text3; commands: "M2.5 4 L21.5 4 L21.5 17 L2.5 17 Z M8.5 20.5 L15.5 20.5 M12 17 L12 20.3"; }
+            if !showing-active : StrokeIcon { width: 24px; height: 24px; tint: Theme.text3; commands: "M2.5 4 L21.5 4 L21.5 17 L2.5 17 Z M8.5 20.5 L15.5 20.5 M12 17 L12 20.3"; }
         }
         Rectangle { height: 11px; }
         Rectangle {
             height: 30px;
             border-radius: 6px;
-            background: active ? Theme.accent-soft : Theme.subtle;
+            background: showing-active ? Theme.accent-soft : Theme.subtle;
             border-width: 1px;
-            border-color: active ? Theme.accent-soft-stroke : Theme.ctl-stroke;
+            border-color: showing-active ? Theme.accent-soft-stroke : Theme.ctl-stroke;
             HorizontalLayout {
                 alignment: center;
                 spacing: 6px;
-                VerticalLayout { alignment: center; IdentifyGlyph { tint: active ? Theme.accent-text : Theme.text; } }
-                Text { text: active ? "Flashing…" : "Flash to identify"; color: active ? Theme.accent-text : Theme.text; font-size: 12px; font-weight: 600; vertical-alignment: center; }
+                VerticalLayout { alignment: center; IdentifyGlyph { tint: Theme.text3; } }
+                Text { text: "Flash preview"; color: Theme.text3; font-size: 12px; font-weight: 600; vertical-alignment: center; }
             }
         }
         Rectangle { height: 9px; }
@@ -217,7 +224,7 @@ component MonNameCard inherits Rectangle {
             border-radius: 6px;
             background: Theme.layer;
             border-width: 1px;
-            border-color: active ? Theme.accent : Theme.ctl-stroke;
+            border-color: Theme.ctl-stroke;
             HorizontalLayout {
                 padding-left: 10px;
                 Text { text: root.name; color: Theme.text; font-size: 13px; font-weight: 600; vertical-alignment: center; }
@@ -232,6 +239,7 @@ export component OnboardingWizard inherits Rectangle {
     // The shared group passphrase the user types on Step 1 (bound to the join field). In --live mode
     // Rust reads this on `pair()` and writes it as the mesh secret.
     in-out property <string> pair-secret;
+    in-out property <string> pair-error;
     callback close();
     // Fired when the user commits the passphrase (Pair button or Enter). Rust saves the secret and
     // relaunches into the live mesh; the design preview leaves it unhandled.
@@ -335,7 +343,8 @@ export component OnboardingWizard inherits Rectangle {
                                         font-family: Theme.font-mono;
                                         vertical-alignment: center;
                                         single-line: true;
-                                        accepted => { root.pair(); }
+                                        edited => { root.pair-error = ""; }
+                                        accepted => { if root.pair-secret != "" { root.pair(); } }
                                     }
                                 }
                                 // Placeholder (TextInput has no native one): show only while empty + unfocused.
@@ -348,7 +357,14 @@ export component OnboardingWizard inherits Rectangle {
                                     vertical-alignment: center;
                                 }
                             }
-                            Btn { label: "Pair"; primary: true; h: 38px; clicked => { root.pair(); } }
+                            Btn { label: "Pair"; primary: true; enabled: root.pair-secret != ""; h: 38px; clicked => { root.pair(); } }
+                        }
+
+                        if root.pair-error != "" : Text {
+                            text: root.pair-error;
+                            color: Theme.danger-text;
+                            font-size: 11.5px;
+                            wrap: word-wrap;
                         }
 
                         Rectangle { height: 10px; }
@@ -389,7 +405,7 @@ export component OnboardingWizard inherits Rectangle {
             Text { text: "Step 2 of 4 · Monitors"; color: Theme.text3; font-size: 11.5px; font-weight: 700; }
             Rectangle { height: 8px; }
             Text { text: "Confirm your monitors"; color: Theme.text; font-size: 17px; font-weight: 600; }
-            Text { text: "We probe each display over DDC/CI. Uncheck any you don't want screen-hop to manage."; color: Theme.text2; font-size: 12.5px; wrap: word-wrap; }
+            Text { text: "Preview only — monitor selection will be available when this setup step is connected."; color: Theme.text2; font-size: 12.5px; wrap: word-wrap; }
             Rectangle { height: 14px; }
 
             MonitorProbeRow { name: "Left 27\""; model: "Dell U2723QE · DP-1 · 2560×1440"; ok: true; }
@@ -417,10 +433,11 @@ export component OnboardingWizard inherits Rectangle {
             Text { text: "Step 3 of 4 · Calibrate"; color: Theme.text3; font-size: 11.5px; font-weight: 700; }
             Rectangle { height: 8px; }
             Text { text: "Teach each PC its input on each monitor"; color: Theme.text; font-size: 17px; font-weight: 600; }
-            Text { text: "screen-hop can only read a PC's input code for a monitor while that PC is the one showing on it. Make each PC active on each monitor once — you may need to press the monitor's physical Input button to bootstrap."; color: Theme.text2; font-size: 12.5px; wrap: word-wrap; }
+            Text { text: "Preview only — GUI calibration is not connected yet. Use screen-hop --calibrate from a terminal for the working calibration flow."; color: Theme.text2; font-size: 12.5px; wrap: word-wrap; }
             Rectangle { height: 15px; }
 
             Rectangle {   // calibration matrix
+                opacity: 0.6;
                 border-radius: 10px;
                 background: Theme.layer;
                 border-width: 1px;
@@ -454,6 +471,7 @@ export component OnboardingWizard inherits Rectangle {
 
             Rectangle { height: 13px; }
             HorizontalLayout {   // progress
+                opacity: 0.6;
                 spacing: 12px;
                 VerticalLayout {
                     horizontal-stretch: 1;
@@ -471,6 +489,7 @@ export component OnboardingWizard inherits Rectangle {
 
             Rectangle { height: 13px; }
             Rectangle {   // guidance box
+                opacity: 0.6;
                 border-radius: 9px;
                 background: Theme.accent-soft;
                 border-width: 1px;
@@ -499,13 +518,13 @@ export component OnboardingWizard inherits Rectangle {
             Text { text: "Step 4 of 4 · Names"; color: Theme.text3; font-size: 11.5px; font-weight: 700; }
             Rectangle { height: 8px; }
             Text { text: "Name your look-alikes"; color: Theme.text; font-size: 17px; font-weight: 600; }
-            Text { text: "Two identical Dell U2723QE share the same name. Flash each one to see which is which, then label it."; color: Theme.text2; font-size: 12.5px; wrap: word-wrap; }
+            Text { text: "Preview only — flashing and monitor naming are not connected in this build."; color: Theme.text2; font-size: 12.5px; wrap: word-wrap; }
             Rectangle { height: 15px; }
 
             HorizontalLayout {
                 spacing: 12px;
-                MonNameCard { active: true; name: "Left 27\""; }
-                MonNameCard { active: false; name: "Right 27\""; }
+                MonNameCard { name: "Left 27\""; }
+                MonNameCard { name: "Right 27\""; }
             }
 
             Rectangle { height: 13px; }
@@ -513,7 +532,7 @@ export component OnboardingWizard inherits Rectangle {
                 spacing: 8px;
                 alignment: start;
                 VerticalLayout { alignment: center; InfoGlyph { tint: Theme.text3; } }
-                Text { text: "Flashing inverts the monitor briefly so you can spot it on your desk."; color: Theme.text3; font-size: 11.5px; vertical-alignment: center; }
+                Text { text: "Identification controls are shown for layout preview only."; color: Theme.text3; font-size: 11.5px; vertical-alignment: center; }
             }
         }
 
@@ -525,18 +544,21 @@ export component OnboardingWizard inherits Rectangle {
         Rectangle {
             background: Theme.layer2;
             HorizontalLayout {
+                spacing: 10px;
                 padding-left: 18px;
                 padding-right: 18px;
                 padding-top: 13px;
                 padding-bottom: 13px;
-                if step != 3 : Btn { label: "Back"; clicked => { if (step > 1) { step -= 1; } } }
+                if step > 1 : Btn { label: "Back"; clicked => { step -= 1; } }
                 if step == 3 : VerticalLayout { alignment: center; Text { text: "You can finish later — unknown pairs just can't be auto-switched yet."; color: Theme.text3; font-size: 11.5px; vertical-alignment: center; } }
                 Rectangle { horizontal-stretch: 1; }
-                Btn {
-                    label: step == 1 ? "Next: monitors" : step == 2 ? "Next: calibrate" : step == 3 ? "Next: names" : "Finish setup";
+                if step == 1 : Btn {
+                    label: "Pair to continue";
                     primary: true;
-                    clicked => { if (step < 4) { step += 1; } }
+                    enabled: root.pair-secret != "";
+                    clicked => { root.pair(); }
                 }
+                if step > 1 : Btn { label: "Preview only"; enabled: false; }
             }
         }
     }

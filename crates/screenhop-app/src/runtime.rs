@@ -22,8 +22,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use screenhop_core::SwitchOutcome;
 use screenhop_net::{Message, RecvError};
+use screenhop_state::OwnershipState;
 
-use crate::discovery::{Discovery, ManualHosts, MdnsDiscovery};
+use crate::discovery::{merge, DiscoveredPeer, Discovery, ManualHosts, MdnsDiscovery};
 use crate::mesh::{ActuationReport, Actuator, MeshState, Node};
 
 /// A request to the dedicated actuator thread (which owns the non-`Send` DDC driver). The UI spawns
@@ -68,6 +69,9 @@ impl Actuator for ChannelActuator {
         {
             return ActuationReport::new(SwitchOutcome::Failed, None);
         }
+        // Do not time this channel out independently: the platform DDC call cannot currently be
+        // cancelled, so returning early would release the mesh lease while a late write could
+        // still complete. The proper hardening fix is a cancellable/per-call driver boundary.
         rx.recv()
             .unwrap_or_else(|_| ActuationReport::new(SwitchOutcome::Failed, None))
     }
@@ -132,6 +136,9 @@ pub struct LiveAgent {
     me: String,
     /// Friendly display name announced to peers (e.g. hostname), shown in their tray.
     name: String,
+    /// Whether this process is allowed to perform local DDC writes. This is advertised to peers so
+    /// they do not offer a read-only node as a switch target.
+    can_actuate: bool,
     self_addr: SocketAddr,
     manual: ManualHosts,
     mdns: Option<MdnsDiscovery>,
@@ -143,6 +150,7 @@ impl LiveAgent {
     pub fn new(
         node: Node,
         name: impl Into<String>,
+        can_actuate: bool,
         self_addr: SocketAddr,
         manual: ManualHosts,
         mdns: Option<MdnsDiscovery>,
@@ -152,6 +160,7 @@ impl LiveAgent {
             node: Arc::new(node),
             me,
             name: name.into(),
+            can_actuate,
             self_addr,
             manual,
             mdns,
@@ -182,6 +191,7 @@ impl LiveAgent {
             node,
             me,
             name,
+            can_actuate,
             self_addr,
             manual,
             mdns,
@@ -207,26 +217,28 @@ impl LiveAgent {
                     let _ = m.announce(&me, self_addr.port());
                 }
                 while !shutdown.load(Ordering::Relaxed) {
-                    let mut candidates: Vec<SocketAddr> =
-                        manual.peers().into_iter().map(|p| p.addr).collect();
+                    let mut sources: Vec<&dyn Discovery> = vec![&manual];
                     if let Some(m) = &mdns {
-                        candidates.extend(m.peers().into_iter().map(|p| p.addr));
+                        sources.push(m);
                     }
-                    for addr in candidates {
-                        if addr == self_addr {
+                    let candidates = merge(&sources);
+                    // Snapshot under the mutex, then release it before any connect/send. Replaying
+                    // the current LWW facts every sync pass provides anti-entropy: peers that were
+                    // offline during a switch catch up as soon as discovery can reach them again.
+                    let ownership = ownership_gossip_snapshot(&node.state());
+                    for candidate in candidates {
+                        if is_self_candidate(&candidate, &me, self_addr) {
                             continue;
                         }
-                        if let Ok(mut session) = node.connect(addr) {
-                            let pid = session.peer_id().to_string();
-                            lock(&peer_addrs).insert(pid, addr);
-                            // Push our presence; the peer's handler records us in its registry.
-                            let _ = session.send(Message::Announce {
-                                name: name.clone(),
-                                endpoints: vec![self_addr.to_string()],
-                                can_actuate: true,
-                                state_version: 0,
-                            });
-                        }
+                        let _ = sync_peer(
+                            &node,
+                            candidate.addr,
+                            &name,
+                            self_addr,
+                            can_actuate,
+                            &peer_addrs,
+                            &ownership,
+                        );
                     }
                     sleep_until(Duration::from_secs(5), &shutdown);
                 }
@@ -257,6 +269,90 @@ impl LiveAgent {
                 Err(RecvTimeoutError::Disconnected) => break,
             }
         }
+    }
+}
+
+fn announce_message(name: &str, self_addr: SocketAddr, can_actuate: bool) -> Message {
+    Message::Announce {
+        name: name.to_owned(),
+        endpoints: vec![self_addr.to_string()],
+        can_actuate,
+        state_version: 0,
+    }
+}
+
+fn is_self_candidate(candidate: &DiscoveredPeer, me: &str, self_addr: SocketAddr) -> bool {
+    candidate.addr == self_addr || candidate.peer_id.as_deref() == Some(me)
+}
+
+/// Build a stable wire snapshot while the state mutex is held briefly. Only positive ownership is
+/// replicated: calibration is intentionally peer-local, so an inactive peer can read an input it
+/// cannot identify and infer `Unknown`; gossiping that negative inference could erase another
+/// peer's valid owner. Stranded/DDC-disabled are richer local states that this wire message also
+/// cannot represent without flattening them.
+fn ownership_gossip_snapshot(state: &Arc<Mutex<MeshState>>) -> Vec<Message> {
+    lock(state)
+        .ownership
+        .snapshot()
+        .into_iter()
+        .filter_map(|(monitor_id, record)| match record.state {
+            OwnershipState::Owned => Some(Message::OwnershipGossip {
+                monitor_id,
+                owner: record.owner,
+                updated_ms: record.updated_ms,
+            }),
+            OwnershipState::Unknown | OwnershipState::Stranded | OwnershipState::DdcDisabled => {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Push presence plus the current ownership snapshot over the address that discovery actually
+/// reached. This deliberately does not use `Announce.endpoints` for routing: production currently
+/// advertises a loopback self-address there, whereas `addr` is the real mDNS/manual LAN endpoint.
+fn sync_peer(
+    node: &Node,
+    addr: SocketAddr,
+    name: &str,
+    self_addr: SocketAddr,
+    can_actuate: bool,
+    peer_addrs: &PeerAddrs,
+    ownership: &[Message],
+) -> Option<String> {
+    let mut session = node.connect(addr).ok()?;
+    let peer_id = session.peer_id().to_owned();
+    lock(peer_addrs).insert(peer_id.clone(), addr);
+
+    if session
+        .send(announce_message(name, self_addr, can_actuate))
+        .is_err()
+    {
+        return None;
+    }
+    for gossip in ownership {
+        if session.send(gossip.clone()).is_err() {
+            return None;
+        }
+    }
+    Some(peer_id)
+}
+
+fn record_switch_result(
+    state: &Arc<Mutex<MeshState>>,
+    monitor_id: &str,
+    target_peer_id: &str,
+    outcome: &str,
+    updated_ms: u64,
+) {
+    let mut state = lock(state);
+    match outcome {
+        "success" | "assumed-success" => {
+            state
+                .ownership
+                .observe(monitor_id, Some(target_peer_id.to_owned()), updated_ms);
+        }
+        _ => {}
     }
 }
 
@@ -300,13 +396,13 @@ fn route_switch(
             eprintln!(
                 "screen-hop: switch {monitor_id} -> {target_peer_id}: {outcome} (observed={observed:?})"
             );
-            if outcome == "success" || outcome == "assumed-success" {
-                lock(&node.state()).ownership.observe(
-                    monitor_id,
-                    Some(target_peer_id.to_owned()),
-                    wall_ms(),
-                );
-            }
+            record_switch_result(
+                &node.state(),
+                monitor_id,
+                target_peer_id,
+                &outcome,
+                wall_ms(),
+            );
         }
         Ok(other) => eprintln!("screen-hop: unexpected reply to switch: {other:?}"),
         Err(RecvError::Io(_)) => eprintln!("screen-hop: no switch result (timeout/disconnect)"),
@@ -317,6 +413,7 @@ fn route_switch(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use screenhop_net::PeerIdentity;
 
     fn addrs(pairs: &[(&str, &str)]) -> PeerAddrs {
         let map = pairs
@@ -324,6 +421,26 @@ mod tests {
             .map(|(p, a)| (p.to_string(), a.parse().unwrap()))
             .collect();
         Arc::new(Mutex::new(map))
+    }
+
+    struct SuccessfulActuator;
+
+    impl Actuator for SuccessfulActuator {
+        fn switch_to_self(&mut self, _monitor_id: &str) -> ActuationReport {
+            ActuationReport::new(SwitchOutcome::Success, Some(0x0F))
+        }
+    }
+
+    fn wait_for_owner(state: &Arc<Mutex<MeshState>>, monitor_id: &str, expected: &str) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while std::time::Instant::now() < deadline {
+            if lock(state).ownership.owner(monitor_id) == Some(expected) {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        let actual = lock(state).ownership.owner(monitor_id).map(str::to_owned);
+        panic!("timed out waiting for {monitor_id} owner {expected}, got {actual:?}");
     }
 
     #[test]
@@ -348,5 +465,150 @@ mod tests {
         let self_addr: SocketAddr = "127.0.0.1:7777".parse().unwrap();
         let pa = addrs(&[]);
         assert_eq!(resolve_target("me", self_addr, &pa, "ghost"), None);
+    }
+
+    #[test]
+    fn announce_reports_the_configured_actuation_capability() {
+        let addr: SocketAddr = "127.0.0.1:7777".parse().unwrap();
+        assert_eq!(
+            announce_message("Read-only PC", addr, false),
+            Message::Announce {
+                name: "Read-only PC".into(),
+                endpoints: vec![addr.to_string()],
+                can_actuate: false,
+                state_version: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn ownership_snapshot_only_replicates_positive_owner_facts() {
+        let state = Arc::new(Mutex::new(MeshState::default()));
+        {
+            let mut st = lock(&state);
+            st.ownership.observe("owned", Some("peer-a".into()), 100);
+            st.ownership.merge("unknown", None, 110);
+            st.ownership.mark_stranded("stranded", 120);
+            st.ownership.mark_ddc_disabled("ddc-off", 130);
+        }
+
+        let mut snapshot = ownership_gossip_snapshot(&state);
+        snapshot.sort_by_key(|message| match message {
+            Message::OwnershipGossip { monitor_id, .. } => monitor_id.clone(),
+            _ => unreachable!(),
+        });
+        assert_eq!(
+            snapshot,
+            vec![Message::OwnershipGossip {
+                monitor_id: "owned".into(),
+                owner: Some("peer-a".into()),
+                updated_ms: 100,
+            }]
+        );
+    }
+
+    #[test]
+    fn switch_result_records_success_but_does_not_overclassify_ddc_unavailable() {
+        let state = Arc::new(Mutex::new(MeshState::default()));
+
+        record_switch_result(&state, "m1", "peer-b", "success", 100);
+        assert_eq!(lock(&state).ownership.owner("m1"), Some("peer-b"));
+
+        record_switch_result(&state, "m1", "peer-b", "ddc-unavailable", 200);
+        let state = lock(&state);
+        assert_eq!(state.ownership.owner("m1"), Some("peer-b"));
+        assert_eq!(state.ownership.state("m1"), OwnershipState::Owned);
+        assert_eq!(state.ownership.record("m1").unwrap().updated_ms, 100);
+    }
+
+    #[test]
+    fn self_candidates_are_filtered_by_address_or_advertised_peer_id() {
+        let self_addr: SocketAddr = "127.0.0.1:7777".parse().unwrap();
+        let by_addr = DiscoveredPeer {
+            peer_id: None,
+            addr: self_addr,
+            source: crate::discovery::PeerSource::Manual,
+        };
+        let by_id = DiscoveredPeer {
+            peer_id: Some("me".into()),
+            addr: "10.0.0.5:7777".parse().unwrap(),
+            source: crate::discovery::PeerSource::Mdns,
+        };
+        let remote = DiscoveredPeer {
+            peer_id: Some("peer-b".into()),
+            addr: "10.0.0.6:7777".parse().unwrap(),
+            source: crate::discovery::PeerSource::Mdns,
+        };
+
+        assert!(is_self_candidate(&by_addr, "me", self_addr));
+        assert!(is_self_candidate(&by_id, "me", self_addr));
+        assert!(!is_self_candidate(&remote, "me", self_addr));
+    }
+
+    #[test]
+    fn successful_remote_switch_snapshot_converges_three_peer_mesh() {
+        let listener_a = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr_a = listener_a.local_addr().unwrap();
+        let listener_b = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr_b = listener_b.local_addr().unwrap();
+        let listener_c = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr_c = listener_c.local_addr().unwrap();
+
+        let node_a = Arc::new(Node::new(PeerIdentity::generate(), "mesh"));
+        let node_b =
+            Arc::new(Node::new(PeerIdentity::generate(), "mesh").with_actuator(SuccessfulActuator));
+        let node_c = Arc::new(Node::new(PeerIdentity::generate(), "mesh"));
+        let state_a = node_a.state();
+        let state_b = node_b.state();
+        let state_c = node_c.state();
+        let id_b = node_b.peer_id();
+
+        for (node, listener) in [
+            (Arc::clone(&node_a), listener_a),
+            (Arc::clone(&node_b), listener_b),
+            (Arc::clone(&node_c), listener_c),
+        ] {
+            thread::spawn(move || node.serve(listener));
+        }
+
+        // A performs the established transactional remote switch against B.
+        let mut switch_session = node_a.connect(addr_b).unwrap();
+        switch_session
+            .send(Message::SwitchCommand {
+                monitor_id: "m1".into(),
+                target: id_b.clone(),
+                input_value: 0,
+            })
+            .unwrap();
+        match switch_session.recv().unwrap() {
+            Message::SwitchResult {
+                monitor_id,
+                outcome,
+                observed,
+            } => {
+                assert_eq!(monitor_id, "m1");
+                assert_eq!(outcome, "success");
+                assert_eq!(observed, Some(0x0F));
+            }
+            other => panic!("expected SwitchResult, got {other:?}"),
+        }
+
+        // The next production sync pass snapshots B's newly-observed owner, then reaches A and C
+        // through discovered addresses (not the loopback endpoint carried in Announce).
+        let snapshot = ownership_gossip_snapshot(&state_b);
+        let learned = addrs(&[]);
+        assert_eq!(
+            sync_peer(&node_b, addr_a, "Peer B", addr_b, true, &learned, &snapshot),
+            Some(node_a.peer_id())
+        );
+        assert_eq!(
+            sync_peer(&node_b, addr_c, "Peer B", addr_b, true, &learned, &snapshot),
+            Some(node_c.peer_id())
+        );
+
+        wait_for_owner(&state_b, "m1", &id_b);
+        wait_for_owner(&state_a, "m1", &id_b);
+        wait_for_owner(&state_c, "m1", &id_b);
+        assert_eq!(lock(&learned).len(), 2);
     }
 }

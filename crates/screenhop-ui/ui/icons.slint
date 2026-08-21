@@ -32,15 +32,3 @@ export component IdentifyGlyph inherits Rectangle {
     Rectangle { width: 13px; height: 13px; border-radius: 7px; border-width: 1.5px; border-color: tint; background: transparent; }
     Rectangle { width: 5px; height: 5px; border-radius: 3px; background: tint; }
 }
-
-// QR placeholder (three finder squares) — stands in for the real QR like the design's i-qr.
-export component QrGlyph inherits Rectangle {
-    in property <color> tint: Theme.text2;
-    width: 42px;
-    height: 42px;
-    Rectangle { x: 0px;  y: 0px;  width: 16px; height: 16px; border-radius: 3px; border-width: 2.5px; border-color: tint; }
-    Rectangle { x: 26px; y: 0px;  width: 16px; height: 16px; border-radius: 3px; border-width: 2.5px; border-color: tint; }
-    Rectangle { x: 0px;  y: 26px; width: 16px; height: 16px; border-radius: 3px; border-width: 2.5px; border-color: tint; }
-    Rectangle { x: 28px; y: 28px; width: 6px;  height: 6px;  border-radius: 1px; background: tint; }
-    Rectangle { x: 36px; y: 36px; width: 6px;  height: 6px;  border-radius: 1px; background: tint; }
-}

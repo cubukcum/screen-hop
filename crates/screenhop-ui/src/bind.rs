@@ -96,6 +96,10 @@ pub fn build_tray(
                     .unwrap_or(id.as_str()),
             ),
             color: peer_color(i),
+            // The pure binding has no liveness/capability input, so preserve the historical
+            // enabled behavior here. Live mode overlays the actual peer capability before the
+            // model reaches Slint; preview callers remain interactive by default.
+            enabled: true,
         })
         .collect();
 
@@ -156,6 +160,7 @@ mod tests {
         assert_eq!(b.monitors[2].active, -1); // m3 unowned -> no segment
         assert_eq!(b.peers.len(), 2);
         assert_eq!(b.peers[1].label.as_str(), "Laptop");
+        assert!(b.peers.iter().all(|peer| peer.enabled));
     }
 
     #[test]

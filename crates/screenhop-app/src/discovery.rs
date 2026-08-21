@@ -121,35 +121,67 @@ use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 /// LAN-verified (M3 checklist); the routing logic it feeds is exercised by the manual-path tests.
 pub struct MdnsDiscovery {
     daemon: ServiceDaemon,
-    found: Arc<Mutex<BTreeMap<String, DiscoveredPeer>>>,
+    // Keep each service instance's current address set. A service can advertise several LAN/VPN
+    // addresses at once, while a later resolve (DHCP/interface change) must atomically replace the
+    // old set and ServiceRemoved must prune it.
+    found: Arc<Mutex<MdnsServices>>,
     _browser: JoinHandle<()>,
 }
 
+type MdnsServices = BTreeMap<String, BTreeMap<SocketAddr, DiscoveredPeer>>;
+
+fn replace_mdns_service(
+    found: &mut MdnsServices,
+    fullname: String,
+    peer_id: Option<String>,
+    addresses: impl IntoIterator<Item = SocketAddr>,
+) {
+    let peers = addresses
+        .into_iter()
+        .map(|addr| {
+            (
+                addr,
+                DiscoveredPeer {
+                    peer_id: peer_id.clone(),
+                    addr,
+                    source: PeerSource::Mdns,
+                },
+            )
+        })
+        .collect();
+    found.insert(fullname, peers);
+}
+
 impl MdnsDiscovery {
-    /// Start browsing for peers. Resolved instances accumulate in the background until dropped.
+    /// Start browsing for peers. Each resolved instance keeps its latest advertised address set;
+    /// re-resolution replaces stale endpoints and removal prunes the instance.
     pub fn start() -> Result<Self, mdns_sd::Error> {
         let daemon = ServiceDaemon::new()?;
         let receiver = daemon.browse(SERVICE_TYPE)?;
-        let found: Arc<Mutex<BTreeMap<String, DiscoveredPeer>>> =
-            Arc::new(Mutex::new(BTreeMap::new()));
+        let found: Arc<Mutex<MdnsServices>> = Arc::new(Mutex::new(BTreeMap::new()));
         let found_bg = Arc::clone(&found);
 
         let browser = thread::spawn(move || {
             while let Ok(event) = receiver.recv() {
-                if let ServiceEvent::ServiceResolved(info) = event {
-                    let peer_id = info.get_property_val_str(TXT_PEER_ID).map(str::to_owned);
-                    let port = info.get_port();
-                    let mut map = found_bg.lock().unwrap_or_else(|e| e.into_inner());
-                    for ip in info.get_addresses_v4() {
-                        map.insert(
-                            info.get_fullname().to_owned(),
-                            DiscoveredPeer {
-                                peer_id: peer_id.clone(),
-                                addr: SocketAddr::new(ip.into(), port),
-                                source: PeerSource::Mdns,
-                            },
-                        );
+                match event {
+                    ServiceEvent::ServiceResolved(info) => {
+                        let fullname = info.get_fullname().to_owned();
+                        let peer_id = info.get_property_val_str(TXT_PEER_ID).map(str::to_owned);
+                        let port = info.get_port();
+                        let addresses = info
+                            .get_addresses_v4()
+                            .into_iter()
+                            .map(|ip| SocketAddr::new(ip.into(), port));
+                        let mut map = found_bg.lock().unwrap_or_else(|e| e.into_inner());
+                        replace_mdns_service(&mut map, fullname, peer_id, addresses);
                     }
+                    ServiceEvent::ServiceRemoved(_, fullname) => {
+                        found_bg
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .remove(&fullname);
+                    }
+                    _ => {}
                 }
             }
         });
@@ -200,12 +232,14 @@ fn primary_local_ipv4() -> Option<Ipv4Addr> {
 
 impl Discovery for MdnsDiscovery {
     fn peers(&self) -> Vec<DiscoveredPeer> {
-        self.found
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .values()
-            .cloned()
-            .collect()
+        let found = self.found.lock().unwrap_or_else(|e| e.into_inner());
+        let mut by_addr = BTreeMap::new();
+        for service in found.values() {
+            for (&addr, peer) in service {
+                by_addr.insert(addr, peer.clone());
+            }
+        }
+        by_addr.into_values().collect()
     }
 }
 
@@ -269,5 +303,34 @@ mod tests {
             PeerSource::Manual,
             "manual assertion wins the source"
         );
+    }
+
+    #[test]
+    fn mdns_replaces_and_removes_each_services_address_set() {
+        let mut found = BTreeMap::new();
+        replace_mdns_service(
+            &mut found,
+            "peer-b._screenhop._tcp.local.".into(),
+            Some("peerB".into()),
+            [
+                "10.0.0.5:7777".parse().unwrap(),
+                "192.168.1.5:7777".parse().unwrap(),
+            ],
+        );
+        assert_eq!(found.values().next().unwrap().len(), 2);
+
+        replace_mdns_service(
+            &mut found,
+            "peer-b._screenhop._tcp.local.".into(),
+            Some("peerB".into()),
+            ["10.0.0.9:7777".parse().unwrap()],
+        );
+        let peers = found.values().next().unwrap();
+        assert_eq!(peers.len(), 1);
+        assert!(peers.contains_key(&"10.0.0.9:7777".parse().unwrap()));
+        assert!(!peers.contains_key(&"10.0.0.5:7777".parse().unwrap()));
+
+        found.remove("peer-b._screenhop._tcp.local.");
+        assert!(found.is_empty());
     }
 }

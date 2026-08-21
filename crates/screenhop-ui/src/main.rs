@@ -20,10 +20,10 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use screenhop_app::discovery::{ManualHosts, MdnsDiscovery};
 use screenhop_app::{
-    persist, reconcile_reads, ActuatorRequest, ChannelActuator, LiveAgent, LocalActuator,
-    MeshState, Node, UiIntent,
+    persist, reconcile_reads, ActuationReport, ActuatorRequest, ChannelActuator, LiveAgent,
+    LocalActuator, MeshState, Node, UiIntent,
 };
-use screenhop_core::{MonitorDriver, RealClock, RealDelayer, SwitchExecutor};
+use screenhop_core::{MonitorDriver, RealClock, RealDelayer, SwitchExecutor, SwitchOutcome};
 use screenhop_ddc::{DdcHiDriver, MonitorInfo};
 use screenhop_identity::CalibrationStore;
 use screenhop_net::PeerIdentity;
@@ -94,6 +94,28 @@ fn main() -> Result<(), slint::PlatformError> {
 enum LiveExit {
     Quit,
     Relaunch,
+}
+
+/// A malformed/unreadable config must never silently fall back to write-enabled defaults. Keep the
+/// node useful for discovery and remote control, but make local DDC actuation read-only until the
+/// operator fixes `config.json`.
+fn load_live_config(config_dir: &std::path::Path) -> persist::AgentConfig {
+    match persist::load_config(config_dir) {
+        Ok(cfg) => cfg,
+        Err(e) => {
+            eprintln!(
+                "screen-hop --live: cannot read config.json: {e}; local actuation is disabled"
+            );
+            persist::AgentConfig {
+                can_actuate: false,
+                ..Default::default()
+            }
+        }
+    }
+}
+
+fn target_can_actuate(capable_peer_ids: &HashSet<String>, target_peer_id: &str) -> bool {
+    capable_peer_ids.contains(target_peer_id)
 }
 
 /// Diagnostic: dump every display handle this machine enumerates, with its full identity fields and
@@ -304,20 +326,27 @@ fn reconcile_loop(
 /// Live mode: the real agent.
 fn run_live() -> Result<LiveExit, slint::PlatformError> {
     let app = AppWindow::new()?;
+    app.set_dev_chrome(false);
+    app.set_presets(ModelRc::from(Rc::new(VecModel::default())));
+    app.set_presets_enabled(false);
+    app.set_read_only_mode(false);
+    app.set_online_count(1);
     app.set_screen(0); // tray flyout
 
     let config_dir = match persist::ensure_config_dir() {
         Ok(d) => d,
         Err(e) => {
             eprintln!("screen-hop --live: cannot open config dir: {e}");
-            return app.run().map(|()| LiveExit::Quit);
+            return run_readonly(app, "read-only".into(), &[], &HashMap::new())
+                .map(|()| LiveExit::Quit);
         }
     };
     let identity = persist::load_or_create_identity(&config_dir).unwrap_or_else(|e| {
         eprintln!("screen-hop --live: identity error: {e}; using an ephemeral identity");
         PeerIdentity::generate()
     });
-    let cfg = persist::load_config(&config_dir).unwrap_or_default();
+    let cfg = load_live_config(&config_dir);
+    let can_actuate = cfg.can_actuate;
     let secret = persist::load_secret(&config_dir).ok().flatten();
     let calibration = persist::load_calibration(&config_dir).unwrap_or_default();
     let mut labels = persist::load_labels(&config_dir).unwrap_or_default();
@@ -330,12 +359,34 @@ fn run_live() -> Result<LiveExit, slint::PlatformError> {
         let calibration = calibration.clone();
         let aliases = cfg.monitor_aliases.clone();
         let mut quirks = QuirksDb::with_shipped();
-        let _ = quirks.load_local(&config_dir.join("quirks-local.json"));
+        if let Err(e) = quirks.load_local(&config_dir.join("quirks-local.json")) {
+            eprintln!("screen-hop --live: cannot load learned monitor quirks: {e}");
+        }
+        if let Err(e) = quirks.load_user(&config_dir.join("quirks-user.json")) {
+            eprintln!("screen-hop --live: cannot load user monitor quirks: {e}");
+        }
         std::thread::spawn(move || {
             let mut driver = DdcHiDriver::enumerate();
             let mons = identified_monitors(&driver, &aliases);
             driver.remap_ids(|m| effective_id(m, &aliases));
             let _ = mon_tx.send(mons);
+
+            if !can_actuate {
+                for req in req_rx {
+                    match req {
+                        ActuatorRequest::Switch { reply, .. } => {
+                            // Defensive fallback: a read-only node is not attached to the mesh as
+                            // an actuator, but if an internal caller sends a switch anyway, report
+                            // an honest failure and never touch DDC.
+                            let _ = reply.send(ActuationReport::new(SwitchOutcome::Failed, None));
+                        }
+                        ActuatorRequest::Read { monitor_id, reply } => {
+                            let _ = reply.send(driver.try_read_input(&monitor_id));
+                        }
+                    }
+                }
+                return;
+            }
 
             let exec = SwitchExecutor::new(driver, RealDelayer, RealClock::default());
             let mut actuator = LocalActuator::new(peer_id, exec, quirks, calibration);
@@ -368,9 +419,12 @@ fn run_live() -> Result<LiveExit, slint::PlatformError> {
 
     // --- mesh node + agent ----------------------------------------------------------------------
     let recon_tx = req_tx.clone(); // a second handle to the actuator thread, for reconcile reads
-    let node = Node::new(identity, &secret)
-        .with_actuator(ChannelActuator::new(req_tx))
-        .with_pin_store(persist::pins_path(&config_dir));
+    let node = Node::new(identity, &secret).with_pin_store(persist::pins_path(&config_dir));
+    let node = if can_actuate {
+        node.with_actuator(ChannelActuator::new(req_tx))
+    } else {
+        node
+    };
     let me = node.peer_id();
 
     let listener = match TcpListener::bind(("0.0.0.0", cfg.port)) {
@@ -402,7 +456,7 @@ fn run_live() -> Result<LiveExit, slint::PlatformError> {
                 .unwrap_or_else(|| "screen-hop".to_string())
         }
     };
-    let agent = LiveAgent::new(node, agent_name, self_addr, manual, mdns);
+    let agent = LiveAgent::new(node, agent_name, can_actuate, self_addr, manual, mdns);
     let agent_state = agent.state();
     std::thread::spawn(move || agent.run(listener, intent_rx));
 
@@ -430,25 +484,40 @@ fn run_live() -> Result<LiveExit, slint::PlatformError> {
     app.set_peers(ModelRc::from(peers_vm.clone()));
 
     // Shared binding (for on_switch index→id resolution) + pending switches (monitor_id → target).
-    let binding = Rc::new(RefCell::new(bind::build_tray(
+    let mut initial_binding = bind::build_tray(
         &controller,
         &monitor_ids,
         std::slice::from_ref(&me),
         &["This PC".to_string()],
-    )));
+    );
+    if let Some(peer) = initial_binding.peers.first_mut() {
+        peer.enabled = can_actuate;
+    }
+    let binding = Rc::new(RefCell::new(initial_binding));
     let pending: Rc<RefCell<HashMap<String, (String, Instant)>>> =
         Rc::new(RefCell::new(HashMap::new()));
+    let capable_peer_ids: Rc<RefCell<HashSet<String>>> = Rc::new(RefCell::new(HashSet::new()));
+    if can_actuate {
+        capable_peer_ids.borrow_mut().insert(me.clone());
+    }
 
     // on_switch: enqueue the intent, mark the monitor pending, flip the row to in-flight now.
     {
         let binding = Rc::clone(&binding);
         let pending = Rc::clone(&pending);
+        let capable_peer_ids = Rc::clone(&capable_peer_ids);
         let monitors_vm = monitors_vm.clone();
         app.on_switch(move |mi, pi| {
             let Some((monitor_id, target)) = binding.borrow().resolve_switch(mi, pi) else {
                 eprintln!("screen-hop: click row={mi} seg={pi} -> no monitor/peer at those indices");
                 return;
             };
+            if !target_can_actuate(&capable_peer_ids.borrow(), &target) {
+                eprintln!(
+                    "screen-hop: switch rejected: target peer {target} is offline or read-only"
+                );
+                return;
+            }
             eprintln!("screen-hop: click row={mi} seg={pi} -> switch monitor {monitor_id} to peer {target}");
             let _ = intent_tx.send(UiIntent::Switch {
                 monitor_id: monitor_id.clone(),
@@ -471,6 +540,7 @@ fn run_live() -> Result<LiveExit, slint::PlatformError> {
         let monitor_ids = Rc::clone(&monitor_ids);
         let binding = Rc::clone(&binding);
         let pending = Rc::clone(&pending);
+        let capable_peer_ids = Rc::clone(&capable_peer_ids);
         let monitors_vm = monitors_vm.clone();
         let peers_vm = peers_vm.clone();
         let app_weak = app.as_weak();
@@ -484,14 +554,28 @@ fn run_live() -> Result<LiveExit, slint::PlatformError> {
             // peers = this PC first, then every known peer.
             let mut peer_ids = vec![me.clone()];
             let mut peer_labels = vec!["This PC".to_string()];
+            let mut capable = HashSet::new();
+            let mut online_count = 1_i32; // this process is running even when configured read-only
+            if can_actuate {
+                capable.insert(me.clone());
+            }
             for pv in controller.peer_views(now) {
+                if pv.id != me && pv.online {
+                    online_count += 1;
+                }
+                if pv.online && pv.can_actuate {
+                    capable.insert(pv.id.clone());
+                }
                 if pv.id != me {
                     peer_labels.push(short_peer_label(&pv.name, &pv.id));
                     peer_ids.push(pv.id);
                 }
             }
-
-            let b = bind::build_tray(&controller, &monitor_ids, &peer_ids, &peer_labels);
+            let mut b = bind::build_tray(&controller, &monitor_ids, &peer_ids, &peer_labels);
+            for (peer, id) in b.peers.iter_mut().zip(peer_ids.iter()) {
+                peer.enabled = target_can_actuate(&capable, id);
+            }
+            *capable_peer_ids.borrow_mut() = capable;
 
             // Expire stale pending entries (target reached, or timed out), then mark in-flight rows.
             {
@@ -506,7 +590,9 @@ fn run_live() -> Result<LiveExit, slint::PlatformError> {
                             row.active >= 0 && peer_ids.get(row.active as usize) == Some(target)
                         })
                         .unwrap_or(false);
-                    !arrived && since.elapsed() < Duration::from_secs(15)
+                    // The executor has a 15 s ceiling and the authenticated transport allows a
+                    // small response margin; keep progress visible for that same full window.
+                    !arrived && since.elapsed() < Duration::from_secs(25)
                 });
             }
             let mut rows: Vec<_> = b.monitors.clone();
@@ -521,7 +607,7 @@ fn run_live() -> Result<LiveExit, slint::PlatformError> {
 
             monitors_vm.set_vec(rows);
             peers_vm.set_vec(b.peers.clone());
-            app.set_online_count(peer_ids.len() as i32);
+            app.set_online_count(online_count);
             app.set_degraded(controller.is_degraded(now));
             *binding.borrow_mut() = b;
         });
@@ -552,10 +638,14 @@ fn run_first_run_wizard(
             };
             let secret = app.get_wizard_secret().trim().to_string();
             if secret.is_empty() {
-                return; // nothing typed yet — ignore the click/Enter
+                app.set_wizard_secret("".into());
+                app.set_wizard_error("Enter at least one non-space character.".into());
+                return;
             }
+            app.set_wizard_error("".into());
             if let Err(e) = persist::save_secret(&config_dir, &secret) {
                 eprintln!("screen-hop --live: could not save mesh secret: {e}");
+                app.set_wizard_error(format!("Could not save the passphrase: {e}").into());
                 return;
             }
             relaunch.set(true);
@@ -586,17 +676,32 @@ fn run_readonly(
     monitor_ids: &[String],
     labels: &HashMap<String, String>,
 ) -> Result<(), slint::PlatformError> {
+    // This path has no functioning mesh actuator (config-dir or listen failure). Replace every
+    // design/default model with honest live data and mark the switch controls unavailable.
+    app.set_dev_chrome(false);
+    app.set_degraded(false);
+    app.set_read_only_mode(true);
+    app.set_online_count(0);
+    app.set_presets(ModelRc::from(Rc::new(VecModel::default())));
+    app.set_presets_enabled(false);
+    app.on_switch(|_, _| {
+        eprintln!("screen-hop: switch ignored because the agent is read-only");
+    });
+
     let state = Arc::new(Mutex::new(MeshState::default()));
     let mut controller = Controller::new(me, state, 20_000);
     for (id, label) in labels {
         controller.set_label(id, label);
     }
-    let b = bind::build_tray(
+    let mut b = bind::build_tray(
         &controller,
         monitor_ids,
         &["this-pc".to_string()],
         &["This PC".to_string()],
     );
+    for peer in &mut b.peers {
+        peer.enabled = false;
+    }
     app.set_monitors(ModelRc::from(Rc::new(VecModel::from(b.monitors))));
     app.set_peers(ModelRc::from(Rc::new(VecModel::from(b.peers))));
     app.set_screen(0);
@@ -606,6 +711,21 @@ fn run_readonly(
 /// Design-preview / snapshot mode (the original behaviour).
 fn run_preview(args: &[String]) -> Result<(), slint::PlatformError> {
     let app = AppWindow::new()?;
+
+    // Keep the intentionally interactive design preview available, while live/read-only modes
+    // remain fail-closed. These opt-ins are never set by `run_live` or `run_readonly`.
+    app.set_dev_chrome(true);
+    app.set_simulate_switches(true);
+    let preview_preset_names = vec![
+        "Trading".to_string(),
+        "Work".to_string(),
+        "Couch".to_string(),
+    ];
+    app.set_presets(ModelRc::from(Rc::new(VecModel::from(bind::build_presets(
+        &preview_preset_names,
+        Some(0),
+    )))));
+    app.set_presets_enabled(true);
 
     if args.iter().any(|a| a == "--dark") {
         app.set_dark(true);
@@ -674,7 +794,23 @@ fn run_preview(args: &[String]) -> Result<(), slint::PlatformError> {
 
 #[cfg(test)]
 mod tests {
-    use super::short_peer_label;
+    use std::collections::HashSet;
+    use std::fs;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    use super::{load_live_config, short_peer_label, target_can_actuate};
+
+    static TEMP_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    fn temp_config_dir() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "screenhop-ui-config-{}-{}",
+            std::process::id(),
+            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
 
     #[test]
     fn short_label_prefers_a_short_name_verbatim() {
@@ -692,5 +828,24 @@ mod tests {
     fn short_label_falls_back_to_a_short_id_prefix_when_unnamed() {
         // Better a 6-char prefix than a 64-char hex blob in a narrow tray segment.
         assert_eq!(short_peer_label("   ", "0123456789abcdef"), "012345");
+    }
+
+    #[test]
+    fn malformed_config_fails_closed_for_local_actuation() {
+        let dir = temp_config_dir();
+        fs::write(dir.join(screenhop_app::persist::CONFIG_FILE), b"not json").unwrap();
+
+        let cfg = load_live_config(&dir);
+
+        assert!(!cfg.can_actuate);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn switch_target_must_be_in_the_live_actuator_set() {
+        let capable = HashSet::from(["writer".to_string()]);
+        assert!(target_can_actuate(&capable, "writer"));
+        assert!(!target_can_actuate(&capable, "read-only"));
+        assert!(!target_can_actuate(&capable, "offline"));
     }
 }

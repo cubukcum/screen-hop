@@ -41,6 +41,19 @@ pub struct OwnershipMap {
     records: HashMap<String, OwnershipRecord>,
 }
 
+/// Deterministic secondary order for the rare case where two peers establish different facts in
+/// the same wall-clock millisecond. Positive ownership beats unknown, persistent local error states
+/// beat both, and the owner id resolves same-state conflicts identically on every replica.
+fn tie_break_key(state: OwnershipState, owner: Option<&str>) -> (u8, &str) {
+    let state_rank = match state {
+        OwnershipState::Unknown => 0,
+        OwnershipState::Owned => 1,
+        OwnershipState::Stranded => 2,
+        OwnershipState::DdcDisabled => 3,
+    };
+    (state_rank, owner.unwrap_or(""))
+}
+
 impl OwnershipMap {
     pub fn new() -> Self {
         Self::default()
@@ -54,7 +67,11 @@ impl OwnershipMap {
         state: OwnershipState,
     ) -> bool {
         if let Some(existing) = self.records.get(monitor) {
-            if existing.updated_ms >= updated_ms {
+            if existing.updated_ms > updated_ms
+                || (existing.updated_ms == updated_ms
+                    && tie_break_key(existing.state, existing.owner.as_deref())
+                        >= tie_break_key(state, owner.as_deref()))
+            {
                 return false;
             }
         }
@@ -70,7 +87,7 @@ impl OwnershipMap {
     }
 
     /// Apply a gossiped record. Returns true if it changed state (strictly newer than what we held
-    /// — ties keep the existing record so the map converges deterministically across peers).
+    /// — timestamp ties use a stable state/owner order so replicas converge identically).
     pub fn merge(&mut self, monitor: &str, owner: Option<String>, updated_ms: u64) -> bool {
         let state = if owner.is_some() {
             OwnershipState::Owned
@@ -116,6 +133,16 @@ impl OwnershipMap {
     pub fn record(&self, monitor: &str) -> Option<&OwnershipRecord> {
         self.records.get(monitor)
     }
+
+    /// Clone the current cache for mesh anti-entropy without exposing the map's storage. Callers
+    /// can release their state lock before doing network I/O, then send this stable point-in-time
+    /// view to as many peers as needed.
+    pub fn snapshot(&self) -> Vec<(String, OwnershipRecord)> {
+        self.records
+            .iter()
+            .map(|(monitor_id, record)| (monitor_id.clone(), record.clone()))
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -140,11 +167,17 @@ mod tests {
     }
 
     #[test]
-    fn ties_keep_existing_for_deterministic_convergence() {
-        let mut m = OwnershipMap::new();
-        m.merge("mon", Some("A".into()), 100);
-        assert!(!m.merge("mon", Some("B".into()), 100));
-        assert_eq!(m.owner("mon"), Some("A"));
+    fn timestamp_ties_converge_by_stable_owner_order() {
+        let mut from_a = OwnershipMap::new();
+        from_a.merge("mon", Some("A".into()), 100);
+        assert!(from_a.merge("mon", Some("B".into()), 100));
+
+        let mut from_b = OwnershipMap::new();
+        from_b.merge("mon", Some("B".into()), 100);
+        assert!(!from_b.merge("mon", Some("A".into()), 100));
+
+        assert_eq!(from_a.record("mon"), from_b.record("mon"));
+        assert_eq!(from_a.owner("mon"), Some("B"));
     }
 
     #[test]
@@ -198,6 +231,21 @@ mod tests {
         assert_eq!(m.state("mon"), OwnershipState::Stranded);
         assert!(m.observe("mon", Some("B".into()), 300));
         assert_eq!(m.state("mon"), OwnershipState::Owned);
+        assert_eq!(m.owner("mon"), Some("B"));
+    }
+
+    #[test]
+    fn snapshot_is_an_owned_copy_of_the_current_records() {
+        let mut m = OwnershipMap::new();
+        m.observe("mon", Some("A".into()), 100);
+
+        let snapshot = m.snapshot();
+        m.observe("mon", Some("B".into()), 200);
+
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].0, "mon");
+        assert_eq!(snapshot[0].1.owner.as_deref(), Some("A"));
+        assert_eq!(snapshot[0].1.updated_ms, 100);
         assert_eq!(m.owner("mon"), Some("B"));
     }
 }
