@@ -11,7 +11,8 @@ cargo build --release -p screenhop-ui -p screenhop-spike
 ```
 
 Output: `installer\dist\screen-hop-setup.exe`. CI builds this on every push (the `installer` job in
-[.github/workflows/ci.yml](../.github/workflows/ci.yml)) and publishes it plus a SHA-256.
+[.github/workflows/ci.yml](../.github/workflows/ci.yml)) and uploads it plus a SHA-256 as the
+`screen-hop-installer` workflow artifact. Release assets are published from that verified artifact.
 
 ## What it does
 

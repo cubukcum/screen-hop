@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.2.0-alpha — safer live controls and multi-peer resilience (pre-release)
+
+### Added
+- **Capability-aware switching.** Read-only, offline, and non-actuating peers are disabled in the
+  live tray and switch requests are rechecked before they enter the mesh.
+- **Multi-peer ownership convergence.** Positive ownership facts are replayed during sync so a
+  third PC, or a PC returning after an outage, catches up without changing the established DDC
+  actuation path.
+- **Multi-adapter discovery.** A peer can advertise several LAN/VPN addresses; re-resolution and
+  removal now replace stale endpoints instead of accumulating them forever.
+
+### Fixed
+- Long peer names are constrained and elided inside the segmented control instead of painting over
+  adjacent PCs or outside the flyout.
+- Live/read-only startup paths no longer expose simulated switches, fake preset success, or
+  developer navigation; incomplete surfaces are clearly marked and inert.
+- Malformed configuration and bind/config-directory failures now fail closed without pretending a
+  monitor switch succeeded.
+- Network reply timing now covers the real actuation ceiling while remaining inside the mesh lease,
+  and equal-timestamp ownership conflicts converge deterministically.
+- First-run pairing rejects whitespace-only secrets with visible feedback.
+
+### Verification
+- 152 automated tests pass across the workspace; formatting and strict Clippy checks are clean.
+- The existing two-PC pull-to-self DDC sequence is unchanged. This release still needs broader
+  real-hardware coverage beyond the previously verified AOC 27P2DG5 setup.
+
 ## v0.1.1-alpha — no more stray console window (pre-release)
 
 ### Fixed
