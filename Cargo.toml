@@ -5,9 +5,7 @@ members = [
     "crates/screenhop-core",
     "crates/screenhop-ddc",
     "crates/screenhop-identity",
-    "crates/screenhop-net",
     "crates/screenhop-quirks",
-    "crates/screenhop-state",
     "crates/screenhop-ui",
     "crates/screenhop-spike",
 ]
@@ -22,24 +20,17 @@ repository = "https://github.com/screen-hop/screen-hop"
 # real floor for anyone building from source.
 rust-version = "1.92"
 
-# Centralized versions for third-party deps so security-sensitive crates (crypto, DDC) are pinned
-# in one place rather than ad-hoc per crate. Crates opt in via `dep = { workspace = true }`.
+# Centralized third-party versions keep the small local workspace consistent. Crates opt in via
+# `dep = { workspace = true }`.
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-zeroize = "1"
-chacha20poly1305 = "0.10"
-argon2 = "0.5"
-ed25519-dalek = { version = "2", features = ["rand_core"] }
-rand_core = { version = "0.6", features = ["getrandom"] }
 ddc-hi = "0.4"
 slint = "1"
 slint-build = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
-# LAN peer discovery (mDNS/DNS-SD) — register + browse `_screenhop._tcp` (M3.2).
-mdns-sd = "0.20"
-# Per-user config/data directory resolution (cross-platform) for the agent's persisted state.
+# Per-user config/data directory resolution for local monitor/source state.
 directories = "5"
 # Dev-only: property-based testing for invariant proofs (e.g. the D7 soft-brick guard).
 proptest = "1"

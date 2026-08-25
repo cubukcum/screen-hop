@@ -1,17 +1,13 @@
-//! screen-hop UI library: the backend-facing **controller** that the Slint tray binary renders.
+//! screen-hop's local single-monitor/two-source UI contract and pure view-model adapters.
 //!
-//! The Slint surfaces (in `ui/*.slint`) are the approved design layer; `main.rs` runs them. This
-//! library is the live data path between [`screenhop_app`] and those surfaces — it produces the
-//! view models the UI shows and turns user intents into real backend calls, replacing the
-//! design-preview's hardcoded mock data. It is pure Rust (no Slint), so it is unit-tested here; the
-//! Slint property binding and the live mesh event loop are wired in `main.rs` and verified on the
-//! 2-PC rig (M5 checklist).
+//! Slint renders one verified toggle plus setup/settings surfaces. [`controller`] translates the
+//! local app state without performing I/O; [`bind`] converts that result to generated Slint types
+//! and validates callback indices before the binary invokes the DDC switcher.
 
-// Slint-generated UI types (AppWindow + the exported structs MonitorRow/Peer/Preset/…), compiled by
-// build.rs and included here so the binding layer and the bin share one definition.
+// AppWindow plus the exported SourceChoice/DetectedMonitor structs are generated from app.slint.
 slint::include_modules!();
 
 pub mod bind;
 pub mod controller;
 
-pub use controller::{Controller, MonitorUiState, MonitorView, PeerView};
+pub use controller::{Controller, LocalView, SourceView, StatusKind};

@@ -1,48 +1,41 @@
-# Security Policy
+# Security policy
 
 ## Reporting a vulnerability
 
-Please report security issues **privately** — do not open a public GitHub issue.
+Please do not open a public issue for an unpatched vulnerability. Use GitHub's private security
+advisory flow for this repository, or contact the maintainer privately when that is unavailable.
+Include affected versions, reproduction steps, impact, and any suggested mitigation.
 
-- Use **GitHub → Security → "Report a vulnerability"** (private advisory) on this repository, or
-- email the maintainer (see the `repository` owner on the GitHub page).
+## Security model
 
-Include what you found, how to reproduce it, and the impact. We aim to acknowledge within a few days
-and will coordinate a fix and disclosure timeline with you.
+screen-hop is a local desktop application. It does not listen on the network, discover peers,
+accept remote commands, or store pairing credentials.
 
-## Threat model (summary)
+Its main safety boundary is the monitor write path:
 
-The full model is in [docs/PLAN-screen-hop.md](docs/PLAN-screen-hop.md) §9. In short:
+- Only DDC/CI VCP feature `0x60` (Input Select) is written.
+- Only the two values observed and confirmed during setup for the selected monitor are eligible.
+- The values must be distinct and fit the protocol's 16-bit range.
+- A panel quirk may block additional values; a blocked value is never overridden by configuration.
+- A malformed local or user quirk layer disables monitor writes until the file is fixed or removed.
+- Missing, incomplete, stale, or malformed configuration fails closed without a write.
+- The executor bounds retry count and app-controlled waits, and surfaces unverified writes as
+  inconclusive. A DDC call blocked inside the OS/backend cannot be interrupted by that ceiling.
 
-- **Scope:** screen-hop is **LAN / Private-network only** — no WAN, no UPnP, no port-forwarding.
-  The threat it defends against is **denial-of-visibility by an *unpaired* host** on a personal LAN
-  (a stranger making your monitors switch). An already-paired peer run by the same operator is
-  **out of scope** — pairing is the trust boundary.
-- **Group secret:** a single shared **mesh secret** is stretched with **Argon2id** (pinned
-  parameters) into a 32-byte group key. **Every** mesh message is sealed with
-  **XChaCha20-Poly1305** (AEAD) bound to a protocol AAD; replay and out-of-sequence frames are
-  rejected.
-- **Peer identity:** each install has an **Ed25519** identity, **pinned trust-on-first-use (TOFU)**.
-  A changed key for a previously-pinned peer is **refused** (MITM / impersonation guard). The pin
-  store is persisted so this guarantee survives restarts.
-- **Soft-brick guard (D7):** the actuator only ever writes a value the peer has **self-calibrated**
-  on that panel. Quirk data (including from community PRs) can only **restrict** behaviour
-  (e.g. add blocked values); it can **never authorize** a `0x60` write. This is what makes accepting
-  community quirk contributions safe.
-- **Actuation surface:** switching uses DDC/CI in a running, logged-in console session only. It
-  cannot touch BIOS/pre-OS/lock screens, and an unpaired host cannot trigger a write.
+Configuration is stored in the current user's standard application-config directory. It contains
+monitor identifiers, friendly source names, the two captured input values, and the last requested
+source. These are not secrets, but another process running as the same user may be able to modify
+them. The app validates the configuration again at the actuation boundary rather than trusting the
+UI or file contents.
 
-## Operational caveat: secret storage & re-pairing (Windows / DPAPI)
+## Hardware recovery
 
-The mesh secret and pinned-peer state are stored **locally**. On Windows, secrets protected with
-**DPAPI** are tied to the **current Windows user account on that machine**. Consequently:
-
-- Moving the install to a **different user account**, resetting the Windows profile, or restoring to
-  a **different machine** makes the protected secret unreadable — you will need to **re-pair** that
-  node (re-enter the mesh secret; peers will re-pin its identity).
-- This is expected behaviour, not data loss: re-pairing re-establishes trust via the normal TOFU
-  flow. Keep your mesh secret somewhere you can re-enter it.
+DDC/CI behavior varies by monitor, GPU, cable, dock, and operating system. A monitor may stop
+accepting commands after switching away from the controlling PC. The physical monitor input button
+is always the recovery path; screen-hop must never imply that software recovery is guaranteed. A
+driver call can also stall despite the dedicated worker thread; close and reopen the app if an
+operation never returns.
 
 ## Supported versions
 
-screen-hop is pre-1.0; security fixes target `main` and the latest tag.
+This project is pre-1.0. Security fixes are applied to the latest revision only.

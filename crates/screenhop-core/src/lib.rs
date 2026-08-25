@@ -8,6 +8,4 @@ pub mod types;
 
 pub use driver::{Clock, Delayer, MonitorDriver, RealClock, RealDelayer};
 pub use executor::SwitchExecutor;
-pub use types::{
-    ActuationPolicy, DdcWriteResult, SwitchDirection, SwitchOutcome, SwitchRequest, SwitchResult,
-};
+pub use types::{ActuationPolicy, DdcWriteResult, SwitchOutcome, SwitchRequest, SwitchResult};

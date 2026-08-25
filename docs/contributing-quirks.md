@@ -1,29 +1,31 @@
 # Contributing a panel quirk
 
 Quirks are **panel-global behaviour facts** for a specific monitor model — how it behaves over
-DDC/CI. They live in [`quirks/quirks.json`](../quirks/quirks.json), replicate across the mesh, and
-are merged with precedence **user > local-learned > shipped**.
+DDC/CI. They live in [`quirks/quirks.json`](../quirks/quirks.json) and are merged with precedence
+**user > local-learned > shipped**.
 
-> **Safety invariant (D7):** a quirk can only ever *restrict* behaviour (block values, slow timing,
-> hint a direction). It can **never authorize** a `0x60` write — only a peer's own self-calibrated
-> value is ever written. That is what makes accepting these PRs safe.
+> **Safety invariant:** a quirk can only ever *restrict* behaviour (block values or slow timing).
+> It can **never authorize** a `0x60` write — only the two values observed locally during setup may
+> be written. That is what makes accepting these PRs safe.
 
 ## 1. Measure your panel
 
-Run the M0 spike on the machine cabled to the monitor and record what you observe:
+Run the hardware spike on the controlling machine and record what you observe:
 
 ```sh
-cargo run -p screenhop-spike            # option 3 = guided pull-to-self test
+cargo run -p screenhop-spike            # choose the guided local round-trip test
 ```
 
-Note: is DDC/CI readable? does pull-to-self work? how long does it take to settle? is read-back
-reliable? are any input values unsafe to write? If you're recording a feasibility verdict, the
-spike can append it to [docs/hardware/pull-to-self-verdicts.md](hardware/pull-to-self-verdicts.md).
+Note: is DDC/CI readable on both active and inactive inputs? Can the same PC complete `A -> B -> A`?
+How long does it take to settle? Is read-back reliable? Are any input values unsafe to write?
 
 ## 2. Find the key
 
-The key is the panel's `monitor_id` (the stable 12-hex id the spike prints in the `MonitorId`
-column) or a model token. Use the same key other entries use for that model if one exists.
+Use the normalized manufacturer/model token for shipped or community quirks, for example
+`SAM-U32H750`. This safely applies the restriction to every unit of that model. An exact local
+override may instead use the backend-specific `local id` printed by `screenhop-ui --monitors`, but
+that address is machine-specific and does not belong in the shipped database. The 12-hex
+fingerprint printed by the developer spike is diagnostic only; it is not used for DDC addressing.
 
 ## 3. Add the entry
 
@@ -31,7 +33,7 @@ Each entry is a JSON object; **every field is optional** — set only what you a
 
 | Field | Type | Meaning |
 |---|---|---|
-| `working_direction` | `"pull_to_self"` \| `"push_release"` | Which direction is known to work (advisory hint). |
+| `working_direction` | `"pull_to_self"` \| `"push_release"` | Historical direction hint retained for database compatibility. |
 | `readback_unreliable` | bool | `true` if the panel's `0x60` read-back can't be trusted (skip verify). |
 | `settle_ms` | int | Delay after a write before reading back (slow panels need more). |
 | `sleep_multiplier` | float | Scale factor for timing on especially slow panels. |

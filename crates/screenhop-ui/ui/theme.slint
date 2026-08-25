@@ -14,7 +14,8 @@ export global Theme {
     // ---- text ----
     out property <color> text:   dark ? #ffffff : #1a1a1a;
     out property <color> text2:  dark ? #ffffffba : #5c5c5c;
-    out property <color> text3:  dark ? #ffffff75 : #8a8a8a;
+    // Muted copy is still used at small sizes, so keep it above decorative-placeholder contrast.
+    out property <color> text3:  dark ? #ffffff99 : #666666;
 
     // ---- lines ----
     out property <color> stroke:      dark ? #ffffff14 : #00000014;

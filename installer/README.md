@@ -1,60 +1,37 @@
-# Windows installer & autostart
+# Windows installer
 
-[`screen-hop.iss`](screen-hop.iss) is an [Inno Setup](https://jrsoftware.org/isinfo.php) script that
-packages screen-hop for Windows.
+The Inno Setup package installs screen-hop per user without administrator rights.
 
-## Build it
+## Build
 
-```sh
-cargo build --release -p screenhop-ui -p screenhop-spike
-"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\screen-hop.iss
+```powershell
+cargo build --release -p screenhop-ui
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\screen-hop.iss
 ```
 
-Output: `installer\dist\screen-hop-setup.exe`. CI builds this on every push (the `installer` job in
-[.github/workflows/ci.yml](../.github/workflows/ci.yml)) and uploads it plus a SHA-256 as the
-`screen-hop-installer` workflow artifact. Release assets are published from that verified artifact.
+Output: `installer\dist\screen-hop-setup.exe`.
 
-## What it does
+## Installed behavior
 
-- **Per-user, no admin.** Installs to `%LOCALAPPDATA%\Programs\screen-hop` with
-  `PrivilegesRequired=lowest` — no UAC prompt.
-- **Autostart (opt-in).** A checkbox adds a per-user `HKCU\…\Run` entry that launches
-  `screenhop-ui.exe --live` at sign-in. This is the admin-free alternative to a Scheduled Task.
-- **Clean uninstall.** Removes the binaries, the Start-menu entries, and the autostart registry
-  value. It deliberately **keeps** your config (calibration, pins, mesh secret) so a reinstall
-  resumes where you left off; delete the config dir by hand if you want a clean slate.
+- Installs under `%LOCALAPPDATA%\Programs\screen-hop`.
+- Adds a Start-menu shortcut for the normal local app.
+- Optionally registers the executable in the current user's `Run` key for sign-in startup.
+- Removes installed binaries and the autostart value on uninstall.
+- Keeps the user's local monitor/source configuration so reinstalling does not force setup again.
 
-## First run
+No network ports, firewall rules, services, pairing secrets, identities, or peer pins are created.
 
-1. Put the same **mesh secret** on each PC: write it to a file named `mesh-secret` (no extension) in
-   the config dir `%APPDATA%\screen-hop\config`. Easiest, from PowerShell:
-   ```powershell
-   Set-Content "$env:APPDATA\screen-hop\config\mesh-secret" -Value "your-shared-passphrase" -Encoding ascii -NoNewline
-   ```
-   (A pairing UI is a follow-up; today this is a file.)
-2. **Calibrate**, with this PC shown on the panels: `screenhop-ui --calibrate`.
-3. Launch `screenhop-ui --live` (autostart does this for you).
+The developer-only `screenhop-spike` hardware diagnostic is intentionally not bundled. Build and
+run it from a source checkout when performing an opt-in hardware compatibility test; normal users
+should use the app's guided setup.
 
-> **Note:** screen-hop is a windowed app (no console window of its own). When you run a CLI mode
-> like `--calibrate` or `--monitors` from PowerShell, the prompt may come back **before** the
-> output prints — that's normal; the output still appears right after. Press Enter to get a clean
-> prompt back.
+## Configuration
 
-## Config location
+The app uses the OS-standard per-user configuration directory and stores `config.json` plus
+optional local/user quirk files. `SCREENHOP_CONFIG_DIR` overrides the directory for diagnostics or
+portable testing.
 
-`%APPDATA%\screen-hop\config` — `identity.key`, `mesh-secret`, `pins.json`, `calibration.json`,
-`labels.json`, `config.json`. Override the whole location with `SCREENHOP_CONFIG_DIR`. (`--live`
-also prints this exact path if no `mesh-secret` is found.)
+## Signing
 
-## Code signing
-
-The installer and binaries ship **unsigned** for now; CI publishes SHA-256 sums so you can verify
-integrity. SmartScreen will warn on first run. Signing (Azure Trusted Signing, or an OV/EV
-certificate) is a planned follow-up — see the plan's decision log (§15).
-
-## Known limitation: active-console session (D11)
-
-screen-hop should only actuate DDC from the **active, interactive console session** (not a locked
-screen, RDP, or a service/Session-0 context). That guard is **not yet enforced in code** — if you
-autostart it and then lock/RDP, a switch could still be attempted. Tracked as a follow-up in
-[docs/REMAINING-CHECKLIST.md](../docs/REMAINING-CHECKLIST.md).
+The package is currently unsigned. Release artifacts should include a published SHA-256 until a
+code-signing path is configured.

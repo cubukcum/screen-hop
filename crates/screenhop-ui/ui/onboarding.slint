@@ -1,564 +1,428 @@
 import { Theme } from "theme.slint";
-import { StrokeIcon, InfoGlyph, IdentifyGlyph } from "icons.slint";
+import { StrokeIcon } from "icons.slint";
 
-// Pill button (primary = accent fill, secondary = subtle outline). Width hugs its label.
-component Btn inherits Rectangle {
+export struct DetectedMonitor {
+    name: string,
+    detail: string,
+}
+
+global SetupGlyph {
+    out property <string> monitor: "M3 5.5 L21 5.5 L21 17 L3 17 Z M9 20 L15 20 M12 17 L12 20";
+    out property <string> source: "M5 8 L18 8 M15 5 L18 8 L15 11 M19 16 L6 16 M9 13 L6 16 L9 19";
+    out property <string> check: "M5 12.5 L9.5 17 L19 7";
+    out property <string> alert: "M12 4 L22 19.5 L2 19.5 Z M12 10 L12 14.2";
+}
+
+component Button inherits Rectangle {
     in property <string> label;
     in property <bool> primary: false;
     in property <bool> enabled: true;
-    in property <length> h: 32px;
     callback clicked;
-    height: h;
-    width: t.preferred-width + 34px;
-    border-radius: 6px;
+
+    height: 36px;
+    width: label-text.preferred-width + 32px;
+    border-radius: 7px;
     background: primary
-        ? (enabled ? (ta.pressed ? #0c5e32 : Theme.accent) : Theme.subtle)
-        : (enabled && ta.has-hover ? Theme.bg2 : Theme.subtle);
-    border-width: primary ? 0px : 1px;
+        ? (enabled ? (hit.has-hover ? #0c6f39 : Theme.accent) : Theme.subtle)
+        : (enabled && hit.has-hover ? Theme.bg2 : Theme.layer);
+    border-width: primary && enabled ? 0px : 1px;
     border-color: Theme.ctl-stroke;
     opacity: enabled ? 1 : 0.5;
-    ta := TouchArea {
+    animate background { duration: 140ms; }
+
+    hit := TouchArea {
         enabled: root.enabled;
         clicked => { root.clicked(); }
     }
-    t := Text {
+    label-text := Text {
         text: root.label;
-        color: root.enabled && primary ? #ffffff : Theme.text;
-        font-size: 13px;
-        font-weight: 600;
+        color: root.primary && root.enabled ? #ffffff : Theme.text2;
+        font-size: 12.5px;
+        font-weight: 650;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
 }
 
-component StepBadge inherits HorizontalLayout {
+component StepBadge inherits Rectangle {
     in property <int> index;
     in property <int> current;
     in property <string> label;
-    property <bool> active: index == current;
-    spacing: 6px;
-    Rectangle {
-        width: 18px;
-        height: 18px;
-        border-radius: 9px;
-        background: active ? Theme.accent : transparent;
-        border-width: active ? 0px : 1px;
-        border-color: Theme.ctl-stroke;
-        Text { text: "\{index}"; color: active ? #ffffff : Theme.text3; font-size: 10px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
+    property <bool> complete: current > index;
+    property <bool> active: current == index;
+
+    width: 120px;
+    height: 44px;
+    background: transparent;
+    VerticalLayout {
+        alignment: center;
+        spacing: 4px;
+        Rectangle {
+            width: 20px;
+            height: 20px;
+            border-radius: 10px;
+            background: root.complete || root.active ? Theme.accent : transparent;
+            border-width: root.complete || root.active ? 0px : 1px;
+            border-color: Theme.ctl-stroke;
+            if root.complete : StrokeIcon {
+                width: 12px;
+                height: 12px;
+                tint: #ffffff;
+                sw: 2.2px;
+                commands: SetupGlyph.check;
+            }
+            if !root.complete : Text {
+                text: "\{root.index}";
+                color: root.active ? #ffffff : Theme.text3;
+                font-size: 10px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        Text {
+            text: root.label;
+            color: root.active ? Theme.accent-text : Theme.text3;
+            font-size: 10px;
+            font-weight: root.active ? 700 : 550;
+            horizontal-alignment: center;
+        }
     }
-    Text { text: label; color: active ? Theme.accent-text : Theme.text3; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
 }
 
-// A probed monitor row for Step 2: checkbox + monitor icon + name/model + DDC chip or Fix.
-// `ok` = responds to DDC/CI (green/checked); otherwise an amber "not responding" row.
-component MonitorProbeRow inherits Rectangle {
+component MonitorOption inherits Rectangle {
     in property <string> name;
-    in property <string> model;
-    in property <bool> ok;
-    opacity: 0.6;
+    in property <string> detail;
+    in property <bool> selected;
+    callback clicked;
+
+    height: 60px;
     border-radius: 9px;
-    background: ok ? Theme.layer : Theme.warn-bg;
-    border-width: 1px;
-    border-color: ok ? Theme.stroke : Theme.warn-stroke;
+    background: selected ? Theme.accent-soft : (hit.has-hover ? Theme.layer2 : Theme.layer);
+    border-width: selected ? 2px : 1px;
+    border-color: selected ? Theme.accent : Theme.stroke;
+    animate background { duration: 140ms; }
+
+    hit := TouchArea { clicked => { root.clicked(); } }
     HorizontalLayout {
         padding-left: 12px;
         padding-right: 12px;
-        padding-top: 11px;
-        padding-bottom: 11px;
         spacing: 11px;
         VerticalLayout {
             alignment: center;
             Rectangle {
-                width: 20px; height: 20px; border-radius: 5px;
-                background: ok ? Theme.accent : Theme.subtle;
-                border-width: ok ? 0px : 1px;
-                border-color: Theme.ctl-stroke;
-                if ok : StrokeIcon { width: 13px; height: 13px; tint: #ffffff; sw: 2.1px; commands: "M5 12.5 L9.5 17 L19 7"; }
-            }
-        }
-        VerticalLayout {
-            alignment: center;
-            Rectangle {
-                width: 32px; height: 32px; border-radius: 7px;
-                background: ok ? Theme.subtle : Theme.layer;
-                border-width: 1px;
-                border-color: ok ? Theme.stroke : Theme.warn-stroke;
-                StrokeIcon { width: 18px; height: 18px; tint: ok ? Theme.text2 : Theme.warn-accent; commands: "M2.5 4 L21.5 4 L21.5 17 L2.5 17 Z M8.5 20.5 L15.5 20.5 M12 17 L12 20.3"; }
+                width: 30px;
+                height: 30px;
+                border-radius: 7px;
+                background: selected ? Theme.accent : Theme.subtle;
+                StrokeIcon {
+                    width: 17px;
+                    height: 17px;
+                    tint: selected ? #ffffff : Theme.text2;
+                    commands: SetupGlyph.monitor;
+                }
             }
         }
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            spacing: 1px;
-            Text { text: root.name; color: Theme.text; font-size: 13px; font-weight: 600; }
-            Text { text: root.model; color: ok ? Theme.text3 : Theme.warn-text; font-size: 11px; }
+            spacing: 2px;
+            Text { text: root.name; color: Theme.text; font-size: 13px; font-weight: 650; overflow: elide; }
+            Text { text: root.detail; color: Theme.text3; font-size: 10.5px; overflow: elide; }
         }
         VerticalLayout {
             alignment: center;
-            if ok : Rectangle {
-                height: 22px;
-                width: ddcrow.preferred-width;
-                border-radius: 11px;
-                background: Theme.ok-bg;
-                ddcrow := HorizontalLayout {
-                    padding-left: 8px; padding-right: 8px; spacing: 5px;
-                    VerticalLayout { alignment: center; StrokeIcon { width: 12px; height: 12px; tint: Theme.accent-text; sw: 2.1px; commands: "M5 12.5 L9.5 17 L19 7"; } }
-                    Text { text: "DDC/CI"; color: Theme.accent-text; font-size: 11px; font-weight: 600; vertical-alignment: center; }
-                }
+            Rectangle {
+                width: 18px;
+                height: 18px;
+                border-radius: 9px;
+                border-width: selected ? 5px : 1px;
+                border-color: selected ? Theme.accent : Theme.ctl-stroke;
+                background: Theme.layer;
             }
-            if !ok : Text { text: "Needs DDC/CI"; color: Theme.warn-text; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
         }
     }
 }
 
-// --- Step 3 calibration-matrix building blocks ---
-component VDiv inherits Rectangle { width: 1px; background: Theme.stroke; }
+component InstructionCard inherits Rectangle {
+    in property <string> eyebrow;
+    in property <string> title;
+    in property <string> body;
+    in property <int> number;
 
-component PcHead inherits Rectangle {
-    in property <string> name;
-    in property <color> dot;
-    horizontal-stretch: 1;
-    background: Theme.layer2;
-    HorizontalLayout {
-        alignment: center;
-        padding-top: 10px;
-        padding-bottom: 10px;
-        spacing: 5px;
-        VerticalLayout { alignment: center; Rectangle { width: 8px; height: 8px; border-radius: 4px; background: root.dot; } }
-        Text { text: root.name; color: Theme.text; font-size: 12px; font-weight: 600; vertical-alignment: center; }
-    }
-}
-
-component MonCell inherits Rectangle {
-    in property <string> name;
-    width: 130px;
-    HorizontalLayout {
-        padding-left: 12px;
-        padding-top: 13px;
-        padding-bottom: 13px;
-        spacing: 7px;
-        VerticalLayout { alignment: center; StrokeIcon { width: 15px; height: 15px; tint: Theme.text3; commands: "M2.5 4 L21.5 4 L21.5 17 L2.5 17 Z M8.5 20.5 L15.5 20.5 M12 17 L12 20.3"; } }
-        Text { text: root.name; color: Theme.text; font-size: 12.5px; font-weight: 600; vertical-alignment: center; }
-    }
-}
-
-component CalStatusCell inherits Rectangle {
-    in property <int> kind;   // 0 confirmed · 1 unknown · 2 learning
-    horizontal-stretch: 1;
-    background: kind == 2 ? Theme.accent-soft : transparent;
-    HorizontalLayout {
-        alignment: center;
-        padding-top: 13px;
-        padding-bottom: 13px;
-        if kind == 0 : HorizontalLayout {
-            spacing: 5px;
-            VerticalLayout { alignment: center; StrokeIcon { width: 15px; height: 15px; tint: Theme.accent-text; sw: 2.1px; commands: "M5 12.5 L9.5 17 L19 7"; } }
-            Text { text: "Confirmed"; color: Theme.accent-text; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
-        }
-        if kind == 1 : Text { text: "— unknown"; color: Theme.text3; font-size: 11px; vertical-alignment: center; }
-        if kind == 2 : HorizontalLayout {
-            spacing: 6px;
-            VerticalLayout { alignment: center; Rectangle { width: 11px; height: 11px; border-radius: 6px; border-width: 2px; border-color: Theme.accent-text; background: transparent; } }
-            Text { text: "Learning…"; color: Theme.accent-text; font-size: 11px; font-weight: 700; vertical-alignment: center; }
-        }
-    }
-}
-
-component CalRow inherits HorizontalLayout {
-    in property <string> name;
-    in property <int> k0;
-    in property <int> k1;
-    in property <int> k2;
-    MonCell { name: root.name; }
-    VDiv { }
-    CalStatusCell { kind: root.k0; }
-    VDiv { }
-    CalStatusCell { kind: root.k1; }
-    VDiv { }
-    CalStatusCell { kind: root.k2; }
-}
-
-// A look-alike monitor card for the Step 4 layout preview. Actions remain visibly unavailable
-// until the real flash/name callbacks are connected.
-component MonNameCard inherits Rectangle {
-    in property <string> name;
-    property <bool> showing-active: false; // static preview: flash/name actions are not connected
-    opacity: 0.6;
-    horizontal-stretch: 1;
     border-radius: 10px;
     background: Theme.layer;
-    border-width: showing-active ? 2px : 1px;
-    border-color: showing-active ? Theme.accent : Theme.stroke;
-    VerticalLayout {
-        padding: 13px;
-        spacing: 0px;
-        Rectangle {
-            height: 62px;
-            border-radius: 7px;
-            background: showing-active ? @linear-gradient(135deg, #107c41 0%, #0c5e32 100%) : (Theme.dark ? #ffffff14 : #e8e8e8);
-            if showing-active : Path {
-                width: 26px; height: 26px;
-                viewbox-width: 24; viewbox-height: 24;
-                fill: #ffffff;
-                commands: "M13 3 L4.5 13.5 L11 13.5 L10 21 L19 10 L12.5 10 Z";
-            }
-            if !showing-active : StrokeIcon { width: 24px; height: 24px; tint: Theme.text3; commands: "M2.5 4 L21.5 4 L21.5 17 L2.5 17 Z M8.5 20.5 L15.5 20.5 M12 17 L12 20.3"; }
-        }
-        Rectangle { height: 11px; }
-        Rectangle {
-            height: 30px;
-            border-radius: 6px;
-            background: showing-active ? Theme.accent-soft : Theme.subtle;
-            border-width: 1px;
-            border-color: showing-active ? Theme.accent-soft-stroke : Theme.ctl-stroke;
-            HorizontalLayout {
-                alignment: center;
-                spacing: 6px;
-                VerticalLayout { alignment: center; IdentifyGlyph { tint: Theme.text3; } }
-                Text { text: "Flash preview"; color: Theme.text3; font-size: 12px; font-weight: 600; vertical-alignment: center; }
+    border-width: 1px;
+    border-color: Theme.stroke;
+    HorizontalLayout {
+        padding: 16px;
+        spacing: 13px;
+        VerticalLayout {
+            alignment: start;
+            Rectangle {
+                width: 34px;
+                height: 34px;
+                border-radius: 17px;
+                background: Theme.accent-soft;
+                Text {
+                    text: "\{root.number}";
+                    color: Theme.accent-text;
+                    font-size: 14px;
+                    font-weight: 750;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
             }
         }
-        Rectangle { height: 9px; }
-        Rectangle {
-            height: 32px;
-            border-radius: 6px;
-            background: Theme.layer;
-            border-width: 1px;
-            border-color: Theme.ctl-stroke;
-            HorizontalLayout {
-                padding-left: 10px;
-                Text { text: root.name; color: Theme.text; font-size: 13px; font-weight: 600; vertical-alignment: center; }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 4px;
+            Text { text: root.eyebrow; color: Theme.text3; font-size: 10px; font-weight: 750; letter-spacing: 0.45px; }
+            Text { text: root.title; color: Theme.text; font-size: 15px; font-weight: 650; wrap: word-wrap; }
+            Text { text: root.body; color: Theme.text2; font-size: 11.5px; wrap: word-wrap; }
+        }
+    }
+}
+
+component NameField inherits VerticalLayout {
+    in property <string> label;
+    in-out property <string> value;
+    spacing: 5px;
+    Text { text: root.label; color: Theme.text2; font-size: 11.5px; font-weight: 650; }
+    Rectangle {
+        height: 38px;
+        border-radius: 7px;
+        background: Theme.subtle;
+        border-width: 1px;
+        border-color: input.has-focus ? Theme.accent : Theme.ctl-stroke;
+        HorizontalLayout {
+            padding-left: 11px;
+            padding-right: 11px;
+            input := TextInput {
+                text <=> root.value;
+                color: Theme.text;
+                font-size: 13px;
+                single-line: true;
+                vertical-alignment: center;
             }
         }
     }
 }
 
-// Onboarding wizard — chrome + 4-step stepper + step content + footer (DESIGN-SPEC "Onboarding").
-export component OnboardingWizard inherits Rectangle {
-    in-out property <int> step: 1;   // 1..4
-    // The shared group passphrase the user types on Step 1 (bound to the join field). In --live mode
-    // Rust reads this on `pair()` and writes it as the mesh secret.
-    in-out property <string> pair-secret;
-    in-out property <string> pair-error;
-    callback close();
-    // Fired when the user commits the passphrase (Pair button or Enter). Rust saves the secret and
-    // relaunches into the live mesh; the design preview leaves it unhandled.
-    callback pair();
+// Four-step local calibration. Step 3 deliberately says what the app is doing: it waits for a
+// physical change, captures B, then attempts to return to A automatically before setup can finish.
+export component SetupWizard inherits Rectangle {
+    in property <[DetectedMonitor]> detected-monitors;
+    in-out property <int> selected-monitor: -1;
+    in property <int> step: 1;
+    in property <bool> busy: false;
+    in property <string> message;
+    in-out property <string> source-a-name;
+    in-out property <string> source-b-name;
 
-    width: 600px;
-    border-radius: 9px;
+    callback continue();
+    callback capture-a();
+    callback listen-b();
+    callback finish();
+    callback cancel();
+
+    property <string> selected-name: selected-monitor >= 0 && selected-monitor < detected-monitors.length
+        ? detected-monitors[selected-monitor].name
+        : "the selected monitor";
+
+    border-radius: 11px;
     background: Theme.bg;
     border-width: 1px;
     border-color: Theme.stroke;
-    drop-shadow-blur: 30px;
-    drop-shadow-color: #00000022;
-    drop-shadow-offset-y: 8px;
+    drop-shadow-blur: 34px;
+    drop-shadow-color: #00000026;
+    drop-shadow-offset-y: 10px;
+    clip: true;
 
     VerticalLayout {
-        // -------- title bar --------
-        Rectangle {
-            height: 36px;
-            background: Theme.bg2;
-            HorizontalLayout {
-                padding-left: 10px;
-                spacing: 8px;
-                Rectangle {
-                    width: 16px; height: 16px; border-radius: 4px;
-                    y: (parent.height - self.height) / 2;
-                    background: @linear-gradient(160deg, #117c44 0%, #0c5e32 100%);
-                    StrokeIcon { width: 11px; height: 11px; tint: #ffffff; sw: 2px; commands: "M2.6 9 L13 9 L13 18 L2.6 18 Z M12.8 7.6 C13.6 4.2 17 2.9 19.6 4.8 M20.7 3.1 L21.1 5.8 L18.4 5.9"; }
-                }
-                Text { text: "Set up screen-hop"; color: Theme.text2; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
-                Rectangle { horizontal-stretch: 1; }
-                Rectangle {
-                    width: 38px;
-                    TouchArea { clicked => { root.close(); } }
-                    StrokeIcon { width: 13px; height: 13px; tint: Theme.text3; sw: 1.6px; commands: "M6 6 L18 18 M18 6 L6 18"; }
-                }
-            }
-        }
-
-        // -------- stepper --------
         HorizontalLayout {
             padding-left: 18px;
             padding-right: 18px;
-            padding-top: 12px;
-            padding-bottom: 4px;
-            spacing: 6px;
-            StepBadge { index: 1; current: step; label: "Pair"; }
-            Rectangle { horizontal-stretch: 1; height: 1px; background: Theme.stroke; }
-            StepBadge { index: 2; current: step; label: "Monitors"; }
-            Rectangle { horizontal-stretch: 1; height: 1px; background: Theme.stroke; }
-            StepBadge { index: 3; current: step; label: "Calibrate"; }
-            Rectangle { horizontal-stretch: 1; height: 1px; background: Theme.stroke; }
-            StepBadge { index: 4; current: step; label: "Names"; }
+            padding-top: 14px;
+            padding-bottom: 11px;
+            spacing: 10px;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 2px;
+                Text { text: "Set up local switching"; color: Theme.text; font-size: 16px; font-weight: 700; }
+                Text { text: "One monitor · two sources · this PC only"; color: Theme.text3; font-size: 10.5px; }
+            }
+            VerticalLayout { alignment: center; Button { label: "Cancel"; enabled: !root.busy; clicked => { root.cancel(); } } }
         }
 
-        // -------- content --------
-        if step == 1 : VerticalLayout {
-                padding-left: 18px;
-                padding-right: 18px;
-                padding-top: 14px;
-                padding-bottom: 16px;
-                spacing: 0px;
+        Rectangle { height: 1px; background: Theme.stroke; }
 
-                Text { text: "Step 1 of 4 · Pair"; color: Theme.text3; font-size: 11.5px; font-weight: 700; }
-                Rectangle { height: 8px; }
-                Text { text: "Pair your PCs with a passphrase"; color: Theme.text; font-size: 17px; font-weight: 600; }
-                Text { text: "Give every PC the same passphrase — that shared secret joins them into one encrypted group. No accounts, no codes, no server."; color: Theme.text2; font-size: 12.5px; wrap: word-wrap; }
-                Rectangle { height: 16px; }
+        HorizontalLayout {
+            padding-left: 18px;
+            padding-right: 18px;
+            padding-top: 8px;
+            padding-bottom: 8px;
+            spacing: 8px;
+            alignment: center;
+            StepBadge { index: 1; current: root.step; label: "Monitor"; }
+            StepBadge { index: 2; current: root.step; label: "Source A"; }
+            StepBadge { index: 3; current: root.step; label: "Source B"; }
+            StepBadge { index: 4; current: root.step; label: "Names"; }
+        }
 
-                // hero: shared-passphrase card — the one real control on this step.
-                Rectangle {
-                    horizontal-stretch: 1;
-                    border-radius: 10px;
-                    background: Theme.layer;
+        Rectangle { height: 1px; background: Theme.stroke; }
+
+        VerticalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-top: 16px;
+            padding-bottom: 12px;
+            spacing: 10px;
+
+            if root.step == 1 : VerticalLayout {
+                spacing: 9px;
+                Text { text: "Choose the monitor to control"; color: Theme.text; font-size: 17px; font-weight: 650; }
+                Text { text: "Displays exposed through the local DDC layer are listed. The next step verifies that the selected handle can read its input."; color: Theme.text2; font-size: 11.5px; wrap: word-wrap; }
+                Rectangle { height: 3px; }
+                if root.detected-monitors.length == 0 : Rectangle {
+                    height: 82px;
+                    border-radius: 9px;
+                    background: Theme.warn-bg;
                     border-width: 1px;
-                    border-color: Theme.stroke;
-                    VerticalLayout {
-                        padding: 16px;
-                        spacing: 0px;
-
-                        Text { text: "SHARED PASSPHRASE"; color: Theme.text3; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; }
-                        Rectangle { height: 10px; }
-
-                        // field (shared passphrase) + Pair. The same passphrase on every PC forms the
-                        // group; in --live mode Rust saves it as the mesh secret and reconnects.
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Rectangle {
-                                horizontal-stretch: 1;
-                                height: 38px;
-                                border-radius: 6px;
-                                background: Theme.subtle;
-                                border-width: 1px;
-                                border-color: pw.has-focus ? Theme.accent : Theme.ctl-stroke;
-                                HorizontalLayout {
-                                    padding-left: 12px;
-                                    padding-right: 12px;
-                                    pw := TextInput {
-                                        text <=> root.pair-secret;
-                                        color: Theme.text;
-                                        font-size: 14px;
-                                        font-family: Theme.font-mono;
-                                        vertical-alignment: center;
-                                        single-line: true;
-                                        edited => { root.pair-error = ""; }
-                                        accepted => { if root.pair-secret != "" { root.pair(); } }
-                                    }
-                                }
-                                // Placeholder (TextInput has no native one): show only while empty + unfocused.
-                                if root.pair-secret == "" && !pw.has-focus : Text {
-                                    x: 12px;
-                                    text: "e.g. correct-horse-battery-staple";
-                                    color: Theme.text3;
-                                    font-size: 14px;
-                                    font-family: Theme.font-mono;
-                                    vertical-alignment: center;
-                                }
-                            }
-                            Btn { label: "Pair"; primary: true; enabled: root.pair-secret != ""; h: 38px; clicked => { root.pair(); } }
-                        }
-
-                        if root.pair-error != "" : Text {
-                            text: root.pair-error;
-                            color: Theme.danger-text;
-                            font-size: 11.5px;
-                            wrap: word-wrap;
-                        }
-
-                        Rectangle { height: 10px; }
-                        Text { text: "Type the identical passphrase on each PC, then press Pair. That's the whole handshake — matching secrets recognise each other on the LAN."; color: Theme.text2; font-size: 11.5px; wrap: word-wrap; }
+                    border-color: Theme.warn-stroke;
+                    HorizontalLayout {
+                        padding: 13px;
+                        spacing: 10px;
+                        StrokeIcon { width: 17px; height: 17px; tint: Theme.warn-accent; commands: SetupGlyph.alert; }
+                        Text { text: "No DDC/CI monitor was found. Enable DDC/CI in the monitor menu, then reopen setup."; color: Theme.warn-text; font-size: 11.5px; wrap: word-wrap; }
                     }
                 }
+                for monitor[index] in root.detected-monitors : MonitorOption {
+                    name: monitor.name;
+                    detail: monitor.detail;
+                    selected: root.selected-monitor == index;
+                    clicked => { root.selected-monitor = index; }
+                }
+            }
 
-                Rectangle { height: 14px; }
+            if root.step == 2 : VerticalLayout {
+                spacing: 11px;
+                Text { text: "Capture source A"; color: Theme.text; font-size: 17px; font-weight: 650; }
+                Text { text: "This records the input that is visible right now. It does not switch anything yet."; color: Theme.text2; font-size: 11.5px; wrap: word-wrap; }
+                Rectangle { height: 3px; }
+                InstructionCard {
+                    number: 1;
+                    eyebrow: "ON THE MONITOR";
+                    title: "Show the first device on " + root.selected-name;
+                    body: "Use the monitor's physical Input / Source control if needed. Make sure the picture you want to call source A is visible.";
+                }
+                InstructionCard {
+                    number: 2;
+                    eyebrow: "IN SCREEN-HOP";
+                    title: "Capture the active input code";
+                    body: "screen-hop will read VCP 0x60 and save that value only after the monitor reports it.";
+                }
+            }
 
-                // honest security note — how the secret becomes the group key, and the trust model.
+            if root.step == 3 : VerticalLayout {
+                spacing: 11px;
+                Text { text: "Teach source B and verify the return path"; color: Theme.text; font-size: 17px; font-weight: 650; }
+                Text { text: "The app must prove that this PC can switch the monitor back after the other input becomes active."; color: Theme.text2; font-size: 11.5px; wrap: word-wrap; }
+                Rectangle { height: 3px; }
+                InstructionCard {
+                    number: 1;
+                    eyebrow: "START LISTENING";
+                    title: "Then physically switch to the other input";
+                    body: "screen-hop waits for a different 0x60 value and records it as source B. Nothing is guessed.";
+                }
+                InstructionCard {
+                    number: 2;
+                    eyebrow: "AUTOMATIC SAFETY TEST";
+                    title: "screen-hop switches back to source A";
+                    body: "Setup continues only after A is confirmed. If the picture does not return, use the monitor's physical Input / Source button to select A; the app may be hidden on B.";
+                }
+            }
+
+            if root.step == 4 : VerticalLayout {
+                spacing: 11px;
+                Text { text: "Name the two sources"; color: Theme.text; font-size: 17px; font-weight: 650; }
+                Text { text: "Use labels you will recognize in the tray. You can change them by rerunning setup."; color: Theme.text2; font-size: 11.5px; wrap: word-wrap; }
+                Rectangle { height: 4px; }
+                HorizontalLayout {
+                    spacing: 10px;
+                    NameField { horizontal-stretch: 1; label: "Source A"; value <=> root.source-a-name; }
+                    NameField { horizontal-stretch: 1; label: "Source B"; value <=> root.source-b-name; }
+                }
                 Rectangle {
-                    horizontal-stretch: 1;
+                    height: 61px;
                     border-radius: 9px;
                     background: Theme.accent-soft;
                     border-width: 1px;
                     border-color: Theme.accent-soft-stroke;
                     HorizontalLayout {
-                        padding-left: 14px; padding-right: 14px; padding-top: 12px; padding-bottom: 12px;
-                        spacing: 11px;
-                        VerticalLayout { StrokeIcon { width: 18px; height: 18px; tint: Theme.accent-text; commands: "M6 11 L6 7.5 C6 4.5 8.4 2.5 12 2.5 C15.6 2.5 18 4.5 18 7.5 L18 11 M4.5 11 L19.5 11 L19.5 21 L4.5 21 Z"; } }
-                        VerticalLayout {
-                            horizontal-stretch: 1;
-                            spacing: 3px;
-                            Text { text: "Your passphrase is the key"; color: Theme.accent-text; font-size: 13px; font-weight: 600; }
-                            Text { text: "screen-hop derives the group's encryption key straight from it (Argon2id) — it never leaves your machines. Pick a strong shared secret and keep it private; anyone who has it can join. Traffic stays on your LAN, peer-to-peer, with no server in between."; color: Theme.text2; font-size: 11.5px; wrap: word-wrap; }
-                        }
+                        padding: 12px;
+                        spacing: 10px;
+                        StrokeIcon { width: 17px; height: 17px; tint: Theme.accent-text; sw: 2px; commands: SetupGlyph.check; }
+                        Text { text: "Both source codes were captured and the automatic return test passed."; color: Theme.accent-text; font-size: 11.5px; font-weight: 600; wrap: word-wrap; }
                     }
                 }
             }
 
-        if step == 2 : VerticalLayout {
-            padding-left: 18px;
-            padding-right: 18px;
-            padding-top: 14px;
-            padding-bottom: 16px;
-            spacing: 0px;
-
-            Text { text: "Step 2 of 4 · Monitors"; color: Theme.text3; font-size: 11.5px; font-weight: 700; }
-            Rectangle { height: 8px; }
-            Text { text: "Confirm your monitors"; color: Theme.text; font-size: 17px; font-weight: 600; }
-            Text { text: "Preview only — monitor selection will be available when this setup step is connected."; color: Theme.text2; font-size: 12.5px; wrap: word-wrap; }
-            Rectangle { height: 14px; }
-
-            MonitorProbeRow { name: "Left 27\""; model: "Dell U2723QE · DP-1 · 2560×1440"; ok: true; }
-            Rectangle { height: 8px; }
-            MonitorProbeRow { name: "Center 32\""; model: "LG 32UN880 · HDMI-2 · 3840×2160"; ok: true; }
-            Rectangle { height: 8px; }
-            MonitorProbeRow { name: "Right 27\""; model: "Dell U2723QE · DP-2 · not responding to DDC/CI"; ok: false; }
-
-            Rectangle { height: 13px; }
-            HorizontalLayout {
-                spacing: 8px;
-                alignment: start;
-                VerticalLayout { alignment: center; InfoGlyph { tint: Theme.text3; } }
-                Text { text: "3 detected · 2 ready · 1 needs DDC/CI enabled in its menu."; color: Theme.text3; font-size: 11.5px; vertical-alignment: center; }
-            }
-        }
-
-        if step == 3 : VerticalLayout {
-            padding-left: 18px;
-            padding-right: 18px;
-            padding-top: 14px;
-            padding-bottom: 16px;
-            spacing: 0px;
-
-            Text { text: "Step 3 of 4 · Calibrate"; color: Theme.text3; font-size: 11.5px; font-weight: 700; }
-            Rectangle { height: 8px; }
-            Text { text: "Teach each PC its input on each monitor"; color: Theme.text; font-size: 17px; font-weight: 600; }
-            Text { text: "Preview only — GUI calibration is not connected yet. Use screen-hop --calibrate from a terminal for the working calibration flow."; color: Theme.text2; font-size: 12.5px; wrap: word-wrap; }
-            Rectangle { height: 15px; }
-
-            Rectangle {   // calibration matrix
-                opacity: 0.6;
-                border-radius: 10px;
-                background: Theme.layer;
+            if root.message != "" : Rectangle {
+                min-height: 42px;
+                border-radius: 8px;
+                background: Theme.warn-bg;
                 border-width: 1px;
-                border-color: Theme.stroke;
-                clip: true;
-                VerticalLayout {
-                    HorizontalLayout {
-                        Rectangle {
-                            width: 130px;
-                            background: Theme.layer2;
-                            HorizontalLayout {
-                                padding-left: 12px; padding-top: 10px; padding-bottom: 10px;
-                                Text { text: "MONITOR \\ PC"; color: Theme.text3; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; vertical-alignment: center; }
-                            }
-                        }
-                        VDiv { }
-                        PcHead { name: "Work"; dot: Theme.pc-work; }
-                        VDiv { }
-                        PcHead { name: "Gaming"; dot: Theme.pc-gaming; }
-                        VDiv { }
-                        PcHead { name: "Home-lab"; dot: Theme.pc-homelab; }
-                    }
-                    Rectangle { height: 1px; background: Theme.stroke; }
-                    CalRow { name: "Left 27\""; k0: 0; k1: 0; k2: 0; }
-                    Rectangle { height: 1px; background: Theme.stroke; }
-                    CalRow { name: "Center 32\""; k0: 0; k1: 2; k2: 1; }
-                    Rectangle { height: 1px; background: Theme.stroke; }
-                    CalRow { name: "Right 27\""; k0: 0; k1: 1; k2: 1; }
-                }
-            }
-
-            Rectangle { height: 13px; }
-            HorizontalLayout {   // progress
-                opacity: 0.6;
-                spacing: 12px;
-                VerticalLayout {
-                    horizontal-stretch: 1;
-                    alignment: center;
-                    Rectangle {
-                        height: 7px;
-                        border-radius: 4px;
-                        background: Theme.dark ? #ffffff1f : #e8e8e8;
-                        clip: true;
-                        Rectangle { x: 0px; width: parent.width * 0.56; height: 7px; border-radius: 4px; background: Theme.accent; }
-                    }
-                }
-                Text { text: "5 of 9 learned"; color: Theme.text2; font-size: 12px; font-weight: 600; vertical-alignment: center; }
-            }
-
-            Rectangle { height: 13px; }
-            Rectangle {   // guidance box
-                opacity: 0.6;
-                border-radius: 9px;
-                background: Theme.accent-soft;
-                border-width: 1px;
-                border-color: Theme.accent-soft-stroke;
+                border-color: Theme.warn-stroke;
                 HorizontalLayout {
-                    padding-left: 14px; padding-right: 14px; padding-top: 12px; padding-bottom: 12px;
-                    spacing: 11px;
-                    VerticalLayout { StrokeIcon { width: 18px; height: 18px; tint: Theme.accent-text; commands: "M4 12 L19 12 M13 6 L19 12 L13 18"; } }
-                    VerticalLayout {
-                        horizontal-stretch: 1;
-                        spacing: 2px;
-                        Text { text: "Now: make Home-lab show on Center 32\""; color: Theme.accent-text; font-size: 13px; font-weight: 600; }
-                        Text { text: "Switch Home-lab onto it (or press the monitor's Input button). screen-hop reads the input the moment it appears."; color: Theme.text2; font-size: 11.5px; wrap: word-wrap; }
-                    }
+                    padding: 10px;
+                    spacing: 8px;
+                    StrokeIcon { width: 15px; height: 15px; tint: Theme.warn-accent; commands: SetupGlyph.alert; }
+                    Text { text: root.message; color: Theme.warn-text; font-size: 11px; wrap: word-wrap; }
                 }
             }
+
+            Rectangle { vertical-stretch: 1; }
         }
 
-        if step == 4 : VerticalLayout {
-            padding-left: 18px;
-            padding-right: 18px;
-            padding-top: 14px;
-            padding-bottom: 16px;
-            spacing: 0px;
+        Rectangle { height: 1px; background: Theme.stroke; }
 
-            Text { text: "Step 4 of 4 · Names"; color: Theme.text3; font-size: 11.5px; font-weight: 700; }
-            Rectangle { height: 8px; }
-            Text { text: "Name your look-alikes"; color: Theme.text; font-size: 17px; font-weight: 600; }
-            Text { text: "Preview only — flashing and monitor naming are not connected in this build."; color: Theme.text2; font-size: 12.5px; wrap: word-wrap; }
-            Rectangle { height: 15px; }
-
-            HorizontalLayout {
-                spacing: 12px;
-                MonNameCard { name: "Left 27\""; }
-                MonNameCard { name: "Right 27\""; }
+        HorizontalLayout {
+            padding-left: 20px;
+            padding-right: 20px;
+            padding-top: 12px;
+            padding-bottom: 12px;
+            Text {
+                text: root.busy ? (root.step == 3 ? "Listening and testing…" : "Reading the monitor…") : "Step \{root.step} of 4";
+                color: root.busy ? Theme.accent-text : Theme.text3;
+                font-size: 11px;
+                font-weight: root.busy ? 650 : 500;
+                vertical-alignment: center;
             }
-
-            Rectangle { height: 13px; }
-            HorizontalLayout {
-                spacing: 8px;
-                alignment: start;
-                VerticalLayout { alignment: center; InfoGlyph { tint: Theme.text3; } }
-                Text { text: "Identification controls are shown for layout preview only."; color: Theme.text3; font-size: 11.5px; vertical-alignment: center; }
+            Rectangle { horizontal-stretch: 1; }
+            if root.step == 1 : Button {
+                label: "Continue";
+                primary: true;
+                enabled: !root.busy && root.selected-monitor >= 0 && root.selected-monitor < root.detected-monitors.length;
+                clicked => { root.continue(); }
             }
-        }
-
-        // -------- footer --------
-        Rectangle {
-            height: 1px;
-            background: Theme.stroke;
-        }
-        Rectangle {
-            background: Theme.layer2;
-            HorizontalLayout {
-                spacing: 10px;
-                padding-left: 18px;
-                padding-right: 18px;
-                padding-top: 13px;
-                padding-bottom: 13px;
-                if step > 1 : Btn { label: "Back"; clicked => { step -= 1; } }
-                if step == 3 : VerticalLayout { alignment: center; Text { text: "You can finish later — unknown pairs just can't be auto-switched yet."; color: Theme.text3; font-size: 11.5px; vertical-alignment: center; } }
-                Rectangle { horizontal-stretch: 1; }
-                if step == 1 : Btn {
-                    label: "Pair to continue";
-                    primary: true;
-                    enabled: root.pair-secret != "";
-                    clicked => { root.pair(); }
-                }
-                if step > 1 : Btn { label: "Preview only"; enabled: false; }
+            if root.step == 2 : Button {
+                label: root.busy ? "Capturing…" : "Capture source A";
+                primary: true;
+                enabled: !root.busy;
+                clicked => { root.capture-a(); }
+            }
+            if root.step == 3 : Button {
+                label: root.busy ? "Listening…" : "Listen for source B";
+                primary: true;
+                enabled: !root.busy;
+                clicked => { root.listen-b(); }
+            }
+            if root.step == 4 : Button {
+                label: "Finish setup";
+                primary: true;
+                enabled: !root.busy && root.source-a-name != "" && root.source-b-name != "";
+                clicked => { root.finish(); }
             }
         }
     }

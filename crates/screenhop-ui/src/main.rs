@@ -1,55 +1,35 @@
-//! screen-hop UI binary (milestone M5).
-//!
-//! Three modes:
-//! - default: design preview window with a dev switcher between surfaces.
-//! - `--shot <png>`: render one surface to a PNG and exit (visual diffing against the design).
-//! - `--live`: the real agent — enumerate this machine's monitors, join the LAN mesh, and route
-//!   tray clicks into actual DDC switches. Verified on a 2-PC rig (see docs/REMAINING-CHECKLIST.md).
+//! Local screen-hop desktop binary: one PC, one selected monitor, two confirmed inputs.
 
-// GUI subsystem: without this, Windows allocates a console window for the app (Rust's default is
-// the console subsystem), and closing that stray window kills the whole process. CLI modes stay
-// usable because main() re-attaches to the parent console before printing anything.
 #![windows_subsystem = "windows"]
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
-use std::net::{SocketAddr, TcpListener};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::{mpsc, Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
-use screenhop_app::discovery::{ManualHosts, MdnsDiscovery};
 use screenhop_app::{
-    persist, reconcile_reads, ActuationReport, ActuatorRequest, ChannelActuator, LiveAgent,
-    LocalActuator, MeshState, Node, UiIntent,
+    ensure_config_dir, load_config, save_config, LocalConfig, LocalSwitchReport, LocalSwitchStatus,
+    LocalSwitcher, SourceSlot, SourceState,
 };
 use screenhop_core::{MonitorDriver, RealClock, RealDelayer, SwitchExecutor, SwitchOutcome};
-use screenhop_ddc::{DdcHiDriver, MonitorInfo};
-use screenhop_identity::CalibrationStore;
-use screenhop_net::PeerIdentity;
+use screenhop_ddc::DdcHiDriver;
 use screenhop_quirks::QuirksDb;
-use screenhop_ui::{bind, AppWindow, Controller, MonitorRow, Peer};
-use slint::{ComponentHandle, Model, ModelRc, Timer, TimerMode, VecModel};
+use screenhop_ui::{bind, AppWindow, Controller};
+use slint::{ComponentHandle, ModelRc, Timer, TimerMode, VecModel};
+
+const READ_REFRESH: Duration = Duration::from_secs(3);
+const SETUP_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const SETUP_POLL_ATTEMPTS: usize = 120;
+const MONITOR_ENUM_TIMEOUT: Duration = Duration::from_secs(10);
 
 fn arg_value(args: &[String], key: &str) -> Option<String> {
     args.iter()
-        .position(|a| a == key)
-        .and_then(|i| args.get(i + 1))
+        .position(|argument| argument == key)
+        .and_then(|index| args.get(index + 1))
         .cloned()
 }
 
-fn wall_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
-
-/// A `windows_subsystem = "windows"` exe gets no console at all, which would make the CLI modes
-/// (`--monitors`, `--calibrate`, `--shot`) silent when run from a terminal. Attach to the parent
-/// process's console so their output shows up again. Launched from the Start menu or autostart
-/// there is no parent console and the call fails as a harmless no-op; handles that the shell
-/// redirected explicitly (pipes, files) are inherited as usual and unaffected by this.
 fn attach_parent_console() {
     #[cfg(windows)]
     unsafe {
@@ -65,214 +45,859 @@ fn attach_parent_console() {
 fn main() -> Result<(), slint::PlatformError> {
     attach_parent_console();
     let args: Vec<String> = std::env::args().collect();
-    if args.iter().any(|a| a == "--calibrate") {
-        if let Err(e) = run_calibrate() {
-            eprintln!("screen-hop --calibrate: {e}");
-            std::process::exit(1);
-        }
-        return Ok(());
-    }
-    if args.iter().any(|a| a == "--monitors") {
+
+    if args.iter().any(|argument| argument == "--monitors") {
         run_monitors();
         return Ok(());
     }
-    if args.iter().any(|a| a == "--live") {
-        // The first-run wizard saves a mesh secret then asks us to relaunch, so the normal live
-        // path below picks the secret up and brings the mesh online (no deferred-startup gymnastics).
-        loop {
-            match run_live()? {
-                LiveExit::Quit => return Ok(()),
-                LiveExit::Relaunch => continue,
-            }
-        }
+
+    if args
+        .iter()
+        .any(|argument| argument == "--preview" || argument == "--shot")
+    {
+        return run_preview(&args);
     }
-    run_preview(&args)
+
+    // --live remains a harmless compatibility alias for older shortcuts. Local mode is now the
+    // normal no-argument product. --calibrate opens the same guided setup as --setup.
+    let force_setup = args
+        .iter()
+        .any(|argument| argument == "--setup" || argument == "--calibrate");
+    run_local(force_setup)
 }
 
-/// How a `--live` session ended: the user quit, or they just paired via the first-run wizard and we
-/// should relaunch so the mesh comes up with the freshly-saved secret.
-enum LiveExit {
-    Quit,
-    Relaunch,
+#[derive(Debug, Clone)]
+struct MonitorDescriptor {
+    id: String,
+    name: String,
+    detail: String,
+    model_token: Option<String>,
 }
 
-/// A malformed/unreadable config must never silently fall back to write-enabled defaults. Keep the
-/// node useful for discovery and remote control, but make local DDC actuation read-only until the
-/// operator fixes `config.json`.
-fn load_live_config(config_dir: &std::path::Path) -> persist::AgentConfig {
-    match persist::load_config(config_dir) {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            eprintln!(
-                "screen-hop --live: cannot read config.json: {e}; local actuation is disabled"
+#[derive(Debug, Clone, Default)]
+struct SetupDraft {
+    monitor_id: Option<String>,
+    monitor_name: Option<String>,
+    monitor_model_token: Option<String>,
+    source_a: Option<u16>,
+    source_b: Option<u16>,
+}
+
+struct UiState {
+    config: LocalConfig,
+    observed: SourceState,
+    pending: Option<SourceSlot>,
+    read_in_flight: bool,
+    worker_available: bool,
+    safety_policy_error: Option<String>,
+    last_read_started: Instant,
+    monitors: Vec<MonitorDescriptor>,
+    draft: SetupDraft,
+    config_dir: PathBuf,
+}
+
+enum WorkerCommand {
+    Read {
+        config: LocalConfig,
+    },
+    SwitchTo {
+        config: LocalConfig,
+        source: SourceSlot,
+    },
+    CaptureA {
+        monitor_id: String,
+    },
+    CaptureBAndReturn {
+        monitor_id: String,
+        monitor_model_token: Option<String>,
+        source_a: u16,
+    },
+}
+
+struct CaptureBSuccess {
+    source_b: u16,
+    return_report: LocalSwitchReport,
+}
+
+enum WorkerEvent {
+    Read(SourceState),
+    Switched {
+        config: LocalConfig,
+        state_after: SourceState,
+        report: LocalSwitchReport,
+    },
+    CapturedA(Result<u16, String>),
+    CapturedB(Result<CaptureBSuccess, String>),
+}
+
+struct WorkerHandle {
+    command_tx: mpsc::Sender<WorkerCommand>,
+    event_rx: mpsc::Receiver<WorkerEvent>,
+    monitors: Vec<MonitorDescriptor>,
+    startup_error: Option<String>,
+    safety_policy_error: Option<String>,
+}
+
+fn run_local(force_setup: bool) -> Result<(), slint::PlatformError> {
+    let app = AppWindow::new()?;
+    let config_dir = match ensure_config_dir() {
+        Ok(directory) => directory,
+        Err(error) => {
+            let config = LocalConfig::default();
+            apply_view(
+                &app,
+                &Controller::new().view(&config, SourceState::Unconfigured, None),
             );
-            persist::AgentConfig {
-                can_actuate: false,
-                ..Default::default()
-            }
+            app.set_detected_monitors(ModelRc::from(Rc::new(VecModel::default())));
+            app.set_selected_monitor(-1);
+            app.set_screen(1);
+            app.set_setup_message(
+                format!("Could not open the configuration directory: {error}").into(),
+            );
+            return app.run();
         }
-    }
-}
+    };
 
-fn target_can_actuate(capable_peer_ids: &HashSet<String>, target_peer_id: &str) -> bool {
-    capable_peer_ids.contains(target_peer_id)
-}
+    let (config, config_error) = match load_config(&config_dir) {
+        Ok(config) => (config, None),
+        Err(error) => (
+            LocalConfig::default(),
+            Some(format!(
+                "The existing configuration is invalid and was not trusted: {error}. Complete setup to replace it."
+            )),
+        ),
+    };
 
-/// Diagnostic: dump every display handle this machine enumerates, with its full identity fields and
-/// whether DDC reads work — so cross-PC identity mismatches (different GPU backends exposing
-/// different EDID) can be diagnosed by comparing two machines' output.
-fn run_monitors() {
-    let mut driver = DdcHiDriver::enumerate();
-    let infos = driver.monitors();
-    println!("{} display handle(s) on this PC:", infos.len());
-    for (i, m) in infos.iter().enumerate() {
-        let input = read_input_retry(&mut driver, &m.id);
-        println!();
-        println!("#{i}  backend = {}", m.backend);
-        println!("    local id     : {}", m.id);
-        println!("    model        : {:?}", m.model);
-        println!("    manufacturer : {:?}", m.manufacturer);
-        println!("    monitor_id   : {:?}", m.monitor_id());
-        match &m.fingerprint {
-            Some(fp) => {
-                let sha = fp.raw_sha256.as_deref().map(|s| &s[..8.min(s.len())]);
-                println!(
-                    "    edid         : pnp={} product=0x{:04X} numeric_serial={} ascii_serial={:?} raw_sha(8)={:?}",
-                    fp.pnp_manufacturer, fp.product_code, fp.numeric_serial, fp.ascii_serial, sha
-                );
-            }
-            None => println!("    edid         : <none exposed by this backend>"),
-        }
-        match input {
-            Some(v) => println!("    reads 0x60   : yes (0x{v:02X})"),
-            None => println!("    reads 0x60   : NO"),
-        }
-    }
-    println!();
-    println!(
-        "If a monitor here has no identity (e.g. it's behind a USB-C hub/dock) but another PC"
+    let WorkerHandle {
+        command_tx,
+        event_rx,
+        monitors,
+        startup_error: worker_error,
+        safety_policy_error,
+    } = start_worker(config_dir.clone());
+    let worker_available = worker_error.is_none();
+    let selected_position = config
+        .selected_monitor
+        .as_deref()
+        .and_then(|selected| monitors.iter().position(|monitor| monitor.id == selected));
+    let selected_monitor_missing = config.is_ready() && selected_position.is_none();
+    let selected_monitor_error = selected_monitor_missing.then(|| {
+        "The configured monitor handle is not available. Complete setup again before switching."
+            .to_owned()
+    });
+    let startup_message = [
+        config_error.as_deref(),
+        worker_error.as_deref(),
+        safety_policy_error.as_deref(),
+        selected_monitor_error.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" ");
+    let startup_message = (!startup_message.is_empty()).then_some(startup_message);
+    let detected_rows: Vec<(String, String)> = monitors
+        .iter()
+        .map(|monitor| (monitor.name.clone(), monitor.detail.clone()))
+        .collect();
+    app.set_detected_monitors(ModelRc::from(Rc::new(VecModel::from(
+        bind::build_detected_monitors(&detected_rows),
+    ))));
+
+    let selected_index = selected_position.map_or_else(
+        || if monitors.is_empty() { -1 } else { 0 },
+        |index| index as i32,
     );
-    println!("sees its real id, force them to match by editing config.json in the config dir:");
-    println!("  {{ \"monitor_aliases\": {{ \"<local id on THIS pc>\": \"<shared id>\" }} }}");
+    app.set_selected_monitor(selected_index);
+    app.set_source_a_name(config.source(SourceSlot::A).label.as_str().into());
+    app.set_source_b_name(config.source(SourceSlot::B).label.as_str().into());
+
+    let observed = if config.is_ready() {
+        SourceState::Unreadable
+    } else {
+        SourceState::Unconfigured
+    };
+    let state = Rc::new(RefCell::new(UiState {
+        config,
+        observed,
+        pending: None,
+        read_in_flight: false,
+        worker_available,
+        safety_policy_error,
+        last_read_started: Instant::now() - READ_REFRESH,
+        monitors,
+        draft: SetupDraft::default(),
+        config_dir,
+    }));
+
+    {
+        let state_ref = state.borrow();
+        apply_state_view(&app, &state_ref);
+    }
+
+    if force_setup
+        || selected_monitor_missing
+        || !state.borrow().config.is_ready()
+        || !state.borrow().worker_available
+    {
+        open_setup(&app, &mut state.borrow_mut(), startup_message.as_deref());
+    } else {
+        app.set_screen(0);
+        let mut ui = state.borrow_mut();
+        request_read(&command_tx, &mut ui);
+        if !ui.worker_available {
+            apply_state_view(&app, &ui);
+        }
+    }
+
+    wire_callbacks(&app, Rc::clone(&state), command_tx.clone());
+
+    let timer = Timer::default();
+    {
+        let app_weak = app.as_weak();
+        let state = Rc::clone(&state);
+        let command_tx = command_tx.clone();
+        timer.start(TimerMode::Repeated, Duration::from_millis(100), move || {
+            let Some(app) = app_weak.upgrade() else {
+                return;
+            };
+
+            while let Ok(event) = event_rx.try_recv() {
+                handle_worker_event(&app, &state, event);
+            }
+
+            let mut ui = state.borrow_mut();
+            if app.get_screen() == 0
+                && ui.worker_available
+                && ui.config.is_ready()
+                && ui.pending.is_none()
+                && !ui.read_in_flight
+                && ui.last_read_started.elapsed() >= READ_REFRESH
+            {
+                request_read(&command_tx, &mut ui);
+                if !ui.worker_available {
+                    apply_state_view(&app, &ui);
+                }
+            }
+        });
+    }
+
+    app.run()
 }
 
-/// Calibration (one-shot CLI). With THIS PC currently displayed on the monitors you want to use,
-/// read each panel's live `0x60` and record it as this peer's pull-to-self value, then persist.
-/// Re-run any time the wiring changes. This is the headless equivalent of the wizard's calibrate
-/// step (the GUI wizard wiring is still pending — see docs/REMAINING-CHECKLIST.md).
-fn run_calibrate() -> std::io::Result<()> {
-    let config_dir = persist::ensure_config_dir()?;
-    let identity = persist::load_or_create_identity(&config_dir)?;
-    let me = identity.peer_id();
-    let cfg = persist::load_config(&config_dir)?;
-    let mut cal = persist::load_calibration(&config_dir)?;
-
-    let mut driver = DdcHiDriver::enumerate();
-    let monitors = identified_monitors(&driver, &cfg.monitor_aliases);
-    driver.remap_ids(|m| effective_id(m, &cfg.monitor_aliases));
-    if monitors.is_empty() {
-        println!(
-            "No identifiable DDC/CI monitors found. Enable DDC/CI in the OSD; for a monitor behind \
-             a hub/dock that hides its identity, add a monitor_aliases entry (see --monitors)."
-        );
-        return Ok(());
+fn wire_callbacks(
+    app: &AppWindow,
+    state: Rc<RefCell<UiState>>,
+    command_tx: mpsc::Sender<WorkerCommand>,
+) {
+    {
+        let app_weak = app.as_weak();
+        let state = Rc::clone(&state);
+        let command_tx = command_tx.clone();
+        app.on_switch_source(move |index| {
+            let Some(app) = app_weak.upgrade() else {
+                return;
+            };
+            let mut ui = state.borrow_mut();
+            if !ui.worker_available {
+                show_worker_stopped(&app, &mut ui);
+                return;
+            }
+            if ui.pending.is_some() {
+                return;
+            }
+            let Some(source) = bind::resolve_source(&ui.config, index) else {
+                app.set_status_kind(4);
+                app.set_status_text("Source is not configured".into());
+                app.set_message("Rerun setup before switching.".into());
+                return;
+            };
+            ui.pending = Some(source);
+            apply_state_view(&app, &ui);
+            let config = ui.config.clone();
+            if command_tx
+                .send(WorkerCommand::SwitchTo { config, source })
+                .is_err()
+            {
+                show_worker_stopped(&app, &mut ui);
+            }
+        });
     }
-    println!("Calibrating as peer {me} (make sure THIS PC is the shown input on each panel):");
-    for (id, label) in &monitors {
-        match read_input_retry(&mut driver, id) {
-            Some(v) => {
-                // Guard against the classic trap: calibrating while the monitor is showing ANOTHER
-                // PC records that PC's input as "ours". If a saved value changes, flag it loudly —
-                // a legit re-cable changes it too, but usually it means the wrong PC was shown.
-                if let Some(prev) = cal.confirmed_value(&me, id) {
-                    if prev != v {
-                        println!(
-                            "  [warn] {label}: value changed 0x{prev:02X} -> 0x{v:02X}. If you did \
-                             NOT re-cable, make sure THIS PC is the one shown on it — you may be \
-                             saving another PC's input by mistake."
-                        );
+
+    {
+        let app_weak = app.as_weak();
+        let state = Rc::clone(&state);
+        let command_tx = command_tx.clone();
+        app.on_toggle(move || {
+            let Some(app) = app_weak.upgrade() else {
+                return;
+            };
+            let mut ui = state.borrow_mut();
+            if !ui.worker_available {
+                show_worker_stopped(&app, &mut ui);
+                return;
+            }
+            if ui.pending.is_some() {
+                return;
+            }
+            let Some((target, request)) = toggle_request(&ui.config, ui.observed) else {
+                app.set_status_kind(3);
+                app.set_status_text("Choose a source explicitly".into());
+                app.set_message(
+                    "The current input is not known well enough for a blind toggle.".into(),
+                );
+                return;
+            };
+            ui.pending = Some(target);
+            apply_state_view(&app, &ui);
+            if command_tx.send(request).is_err() {
+                show_worker_stopped(&app, &mut ui);
+            }
+        });
+    }
+
+    {
+        let app_weak = app.as_weak();
+        let state = Rc::clone(&state);
+        app.on_open_setup(move || {
+            if let Some(app) = app_weak.upgrade() {
+                open_setup(&app, &mut state.borrow_mut(), None);
+            }
+        });
+    }
+
+    {
+        let app_weak = app.as_weak();
+        app.on_open_settings(move || {
+            if let Some(app) = app_weak.upgrade() {
+                app.set_screen(2);
+            }
+        });
+    }
+
+    {
+        let app_weak = app.as_weak();
+        app.on_close_settings(move || {
+            if let Some(app) = app_weak.upgrade() {
+                app.set_screen(0);
+            }
+        });
+    }
+
+    {
+        let app_weak = app.as_weak();
+        let state = Rc::clone(&state);
+        app.on_setup_continue(move || {
+            let Some(app) = app_weak.upgrade() else {
+                return;
+            };
+            let selected = app.get_selected_monitor();
+            let Ok(index) = usize::try_from(selected) else {
+                app.set_setup_message("Choose a monitor first.".into());
+                return;
+            };
+            let mut ui = state.borrow_mut();
+            let Some(monitor) = ui.monitors.get(index).cloned() else {
+                app.set_setup_message("That monitor is no longer available. Reopen setup.".into());
+                return;
+            };
+            ui.draft = SetupDraft {
+                monitor_id: Some(monitor.id),
+                monitor_name: Some(monitor.name),
+                monitor_model_token: monitor.model_token,
+                source_a: None,
+                source_b: None,
+            };
+            app.set_setup_message("".into());
+            app.set_setup_step(2);
+        });
+    }
+
+    {
+        let app_weak = app.as_weak();
+        let state = Rc::clone(&state);
+        let command_tx = command_tx.clone();
+        app.on_setup_capture_a(move || {
+            let Some(app) = app_weak.upgrade() else {
+                return;
+            };
+            let ui = state.borrow();
+            let Some(monitor_id) = ui.draft.monitor_id.clone() else {
+                app.set_setup_message("Return to monitor selection and choose a display.".into());
+                return;
+            };
+            drop(ui);
+            app.set_setup_busy(true);
+            app.set_setup_message("Reading the currently visible input…".into());
+            if command_tx
+                .send(WorkerCommand::CaptureA { monitor_id })
+                .is_err()
+            {
+                show_worker_stopped(&app, &mut state.borrow_mut());
+                app.set_setup_busy(false);
+                app.set_setup_message("The DDC worker stopped. Reopen screen-hop.".into());
+            }
+        });
+    }
+
+    {
+        let app_weak = app.as_weak();
+        let state = Rc::clone(&state);
+        let command_tx = command_tx.clone();
+        app.on_setup_listen_b(move || {
+            let Some(app) = app_weak.upgrade() else {
+                return;
+            };
+            let ui = state.borrow();
+            let (Some(monitor_id), Some(source_a)) =
+                (ui.draft.monitor_id.clone(), ui.draft.source_a)
+            else {
+                app.set_setup_message("Capture source A before listening for source B.".into());
+                return;
+            };
+            let monitor_model_token = ui.draft.monitor_model_token.clone();
+            drop(ui);
+            app.set_setup_busy(true);
+            app.set_setup_message(
+                "Listening for up to 30 seconds. Physically switch the monitor to source B now; screen-hop will then attempt to return to A.".into(),
+            );
+            if command_tx
+                .send(WorkerCommand::CaptureBAndReturn {
+                    monitor_id,
+                    monitor_model_token,
+                    source_a,
+                })
+                .is_err()
+            {
+                show_worker_stopped(&app, &mut state.borrow_mut());
+                app.set_setup_busy(false);
+                app.set_setup_message("The DDC worker stopped. Reopen screen-hop.".into());
+            }
+        });
+    }
+
+    {
+        let app_weak = app.as_weak();
+        let state = Rc::clone(&state);
+        let command_tx = command_tx.clone();
+        app.on_setup_finish(move || {
+            let Some(app) = app_weak.upgrade() else {
+                return;
+            };
+            let mut ui = state.borrow_mut();
+            let (Some(monitor_id), Some(monitor_name), Some(source_a), Some(source_b)) = (
+                ui.draft.monitor_id.clone(),
+                ui.draft.monitor_name.clone(),
+                ui.draft.source_a,
+                ui.draft.source_b,
+            ) else {
+                app.set_setup_message(
+                    "Both source captures must pass before setup can finish.".into(),
+                );
+                return;
+            };
+
+            let source_a_name = app.get_source_a_name().trim().to_owned();
+            let source_b_name = app.get_source_b_name().trim().to_owned();
+            if source_a_name.is_empty() || source_b_name.is_empty() {
+                app.set_setup_message("Give both sources a name.".into());
+                return;
+            }
+
+            let mut config = LocalConfig {
+                selected_monitor: Some(monitor_id.clone()),
+                selected_monitor_model_token: ui.draft.monitor_model_token.clone(),
+                ..LocalConfig::default()
+            };
+            config.monitor_aliases.insert(monitor_id, monitor_name);
+            config.source_mut(SourceSlot::A).label = source_a_name;
+            config.source_mut(SourceSlot::A).confirmed_value = Some(source_a);
+            config.source_mut(SourceSlot::B).label = source_b_name;
+            config.source_mut(SourceSlot::B).confirmed_value = Some(source_b);
+            config.last_requested = Some(SourceSlot::A);
+
+            if let Err(error) = save_config(&ui.config_dir, &config) {
+                app.set_setup_message(format!("Could not save setup: {error}").into());
+                return;
+            }
+
+            ui.config = config;
+            ui.observed = SourceState::A;
+            ui.pending = None;
+            ui.draft = SetupDraft::default();
+            app.set_setup_message("".into());
+            app.set_setup_busy(false);
+            app.set_screen(0);
+            apply_state_view(&app, &ui);
+            request_read(&command_tx, &mut ui);
+            if !ui.worker_available {
+                apply_state_view(&app, &ui);
+                app.set_status_kind(4);
+                app.set_status_text("DDC worker stopped".into());
+                app.set_message("Close and reopen screen-hop, then try again.".into());
+            }
+        });
+    }
+
+    {
+        let app_weak = app.as_weak();
+        let state = Rc::clone(&state);
+        app.on_setup_cancel(move || {
+            if let Some(app) = app_weak.upgrade() {
+                let mut ui = state.borrow_mut();
+                ui.draft = SetupDraft::default();
+                app.set_setup_busy(false);
+                app.set_setup_message("".into());
+                app.set_screen(0);
+                apply_state_view(&app, &ui);
+            }
+        });
+    }
+}
+
+fn handle_worker_event(app: &AppWindow, state: &Rc<RefCell<UiState>>, event: WorkerEvent) {
+    match event {
+        WorkerEvent::Read(observed) => {
+            let mut ui = state.borrow_mut();
+            ui.observed = observed;
+            ui.read_in_flight = false;
+            if ui.pending.is_none() && app.get_screen() == 0 {
+                apply_state_view(app, &ui);
+            }
+        }
+        WorkerEvent::Switched {
+            config,
+            state_after,
+            report,
+        } => {
+            let mut ui = state.borrow_mut();
+            ui.config = config;
+            ui.observed = state_after;
+            ui.pending = None;
+            ui.read_in_flight = false;
+            if ui.safety_policy_error.is_some() {
+                apply_state_view(app, &ui);
+            } else {
+                let view = Controller::new().view_after_report(&ui.config, ui.observed, &report);
+                apply_view(app, &view);
+            }
+
+            if report.status.is_effective_success() {
+                if let Err(error) = save_config(&ui.config_dir, &ui.config) {
+                    app.set_status_kind(3);
+                    app.set_message(
+                        format!(
+                            "The monitor switched, but the last source could not be saved: {error}"
+                        )
+                        .into(),
+                    );
+                }
+            }
+        }
+        WorkerEvent::CapturedA(result) => {
+            app.set_setup_busy(false);
+            match result {
+                Ok(value) => {
+                    state.borrow_mut().draft.source_a = Some(value);
+                    app.set_setup_message(
+                        format!("Captured source A as input code 0x{value:02X}.").into(),
+                    );
+                    app.set_setup_step(3);
+                }
+                Err(error) => app.set_setup_message(error.into()),
+            }
+        }
+        WorkerEvent::CapturedB(result) => {
+            app.set_setup_busy(false);
+            match result {
+                Ok(success) => {
+                    debug_assert!(matches!(
+                        success.return_report.status,
+                        LocalSwitchStatus::Executed(SwitchOutcome::Success)
+                    ));
+                    state.borrow_mut().draft.source_b = Some(success.source_b);
+                    app.set_setup_message(
+                        format!(
+                            "Captured source B as 0x{:02X} and confirmed the return to source A.",
+                            success.source_b
+                        )
+                        .into(),
+                    );
+                    app.set_setup_step(4);
+                }
+                Err(error) => app.set_setup_message(error.into()),
+            }
+        }
+    }
+}
+
+fn request_read(command_tx: &mpsc::Sender<WorkerCommand>, ui: &mut UiState) {
+    if ui.read_in_flight || !ui.worker_available || !ui.config.is_ready() {
+        return;
+    }
+    ui.read_in_flight = true;
+    ui.last_read_started = Instant::now();
+    if command_tx
+        .send(WorkerCommand::Read {
+            config: ui.config.clone(),
+        })
+        .is_err()
+    {
+        ui.read_in_flight = false;
+        ui.worker_available = false;
+    }
+}
+
+fn open_setup(app: &AppWindow, ui: &mut UiState, message: Option<&str>) {
+    ui.draft = SetupDraft::default();
+    let selected = ui
+        .config
+        .selected_monitor
+        .as_deref()
+        .and_then(|id| ui.monitors.iter().position(|monitor| monitor.id == id))
+        .map_or_else(
+            || if ui.monitors.is_empty() { -1 } else { 0 },
+            |index| index as i32,
+        );
+    app.set_selected_monitor(selected);
+    app.set_setup_step(1);
+    app.set_setup_busy(false);
+    app.set_setup_message(message.unwrap_or_default().into());
+    app.set_source_a_name(ui.config.source(SourceSlot::A).label.as_str().into());
+    app.set_source_b_name(ui.config.source(SourceSlot::B).label.as_str().into());
+    app.set_screen(1);
+}
+
+fn apply_view(app: &AppWindow, view: &screenhop_ui::LocalView) {
+    let binding = bind::build_binding(view);
+    app.set_monitor_name(binding.monitor_name);
+    app.set_monitor_detail(binding.monitor_detail);
+    app.set_sources(ModelRc::from(Rc::new(VecModel::from(binding.sources))));
+    app.set_active_source(binding.active_source);
+    app.set_pending_source(binding.pending_source);
+    app.set_ready(binding.ready);
+    app.set_status_kind(binding.status_kind);
+    app.set_status_text(binding.status_text);
+    app.set_message(binding.message);
+}
+
+fn apply_state_view(app: &AppWindow, ui: &UiState) {
+    let mut view = Controller::new().view(&ui.config, ui.observed, ui.pending);
+    if !ui.worker_available {
+        view.ready = false;
+        view.pending_source = -1;
+        view.status_kind = screenhop_ui::StatusKind::Error;
+        view.status_text = "DDC worker unavailable".to_owned();
+        view.message =
+            "No switch command can be sent. Close and reopen screen-hop, then try again."
+                .to_owned();
+    } else if let Some(error) = &ui.safety_policy_error {
+        view.ready = false;
+        view.pending_source = -1;
+        view.status_kind = screenhop_ui::StatusKind::Error;
+        view.status_text = "Safety policy could not be loaded".to_owned();
+        view.message = error.clone();
+    }
+    apply_view(app, &view);
+}
+
+fn show_worker_stopped(app: &AppWindow, ui: &mut UiState) {
+    ui.pending = None;
+    ui.read_in_flight = false;
+    ui.worker_available = false;
+    apply_state_view(app, ui);
+}
+
+fn start_worker(config_dir: PathBuf) -> WorkerHandle {
+    let (command_tx, command_rx) = mpsc::channel();
+    let (event_tx, event_rx) = mpsc::channel();
+    let (monitor_tx, monitor_rx) = mpsc::channel();
+
+    std::thread::spawn(move || {
+        let driver = DdcHiDriver::enumerate();
+        let monitors = monitor_descriptors(&driver);
+
+        let mut quirks = QuirksDb::with_shipped();
+        let mut quirk_errors = Vec::new();
+        if let Err(error) = quirks.load_local(&config_dir.join("quirks-local.json")) {
+            eprintln!("screen-hop: cannot load local quirks: {error}");
+            quirk_errors.push(format!("local quirks: {error}"));
+        }
+        if let Err(error) = quirks.load_user(&config_dir.join("quirks-user.json")) {
+            eprintln!("screen-hop: cannot load user quirks: {error}");
+            quirk_errors.push(format!("user quirks: {error}"));
+        }
+        let safety_policy_error = (!quirk_errors.is_empty()).then(|| {
+            format!(
+                "Monitor writes are disabled because a quirks safety file is invalid ({}). Fix or remove the invalid file, then reopen screen-hop.",
+                quirk_errors.join("; ")
+            )
+        });
+
+        let executor = SwitchExecutor::new(driver, RealDelayer, RealClock::default());
+        let mut switcher = LocalSwitcher::new(executor, quirks);
+        if let Some(error) = &safety_policy_error {
+            switcher.disable_writes(error.clone());
+        }
+        let _ = monitor_tx.send((monitors, safety_policy_error));
+
+        for command in command_rx {
+            match command {
+                WorkerCommand::Read { config } => {
+                    let state = switcher.read_state(&config);
+                    if event_tx.send(WorkerEvent::Read(state)).is_err() {
+                        break;
                     }
                 }
-                cal.record(&me, id, v);
-                println!("  [ok]   {label} ({id}) = 0x{v:02X}");
+                WorkerCommand::SwitchTo { mut config, source } => {
+                    let report = switcher.switch_to(&mut config, source);
+                    let state_after = switcher.read_state(&config);
+                    if event_tx
+                        .send(WorkerEvent::Switched {
+                            config,
+                            state_after,
+                            report,
+                        })
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+                WorkerCommand::CaptureA { monitor_id } => {
+                    let result = match read_input_retry(switcher.driver_mut(), &monitor_id) {
+                        Some(value) => u16::try_from(value).map_err(|_| {
+                            format!("Monitor returned out-of-range input value {value}.")
+                        }),
+                        None => Err(
+                            "Could not read source A. Enable DDC/CI and make sure this PC is visible."
+                                .to_owned(),
+                        ),
+                    };
+                    if event_tx.send(WorkerEvent::CapturedA(result)).is_err() {
+                        break;
+                    }
+                }
+                WorkerCommand::CaptureBAndReturn {
+                    monitor_id,
+                    monitor_model_token,
+                    source_a,
+                } => {
+                    let result = capture_b_and_return(
+                        &mut switcher,
+                        &monitor_id,
+                        monitor_model_token,
+                        source_a,
+                    );
+                    if event_tx.send(WorkerEvent::CapturedB(result)).is_err() {
+                        break;
+                    }
+                }
             }
-            None => println!(
-                "  [skip] {label} ({id}) — DDC/CI unreadable after retries (is this PC the shown \
-                 input, and is DDC/CI enabled in the OSD?)"
-            ),
+        }
+    });
+
+    match monitor_rx.recv_timeout(MONITOR_ENUM_TIMEOUT) {
+        Ok((monitors, safety_policy_error)) => WorkerHandle {
+            command_tx,
+            event_rx,
+            monitors,
+            startup_error: None,
+            safety_policy_error,
+        },
+        Err(error) => {
+            // Do not let commands queue behind an enumeration call that may still be blocked. Once
+            // the OS call returns, dropping the only real sender makes that worker exit without
+            // performing any DDC writes. The replacement sender is deliberately disconnected so
+            // every callback fails closed and can show an honest error immediately.
+            drop(command_tx);
+            let (stopped_tx, stopped_rx) = mpsc::channel();
+            drop(stopped_rx);
+            let message = match error {
+                mpsc::RecvTimeoutError::Timeout => format!(
+                    "Monitor detection did not finish within {} seconds. No switch command was sent. Close and reopen screen-hop; if this repeats, check the display driver and DDC/CI setting.",
+                    MONITOR_ENUM_TIMEOUT.as_secs()
+                ),
+                mpsc::RecvTimeoutError::Disconnected => {
+                    "The DDC worker stopped before monitor detection completed. No switch command was sent. Close and reopen screen-hop."
+                        .to_owned()
+                }
+            };
+            WorkerHandle {
+                command_tx: stopped_tx,
+                event_rx,
+                monitors: Vec::new(),
+                startup_error: Some(message),
+                safety_policy_error: None,
+            }
         }
     }
-    persist::save_calibration(&config_dir, &cal)?;
-    println!(
-        "Saved calibration to {}",
-        config_dir.join("calibration.json").display()
-    );
-    Ok(())
 }
 
-/// The id used for a monitor everywhere except the raw OS handle: a user **alias** wins (for a panel
-/// whose EDID identity is hidden on this PC, e.g. behind a USB-C hub), else the stable EDID id, else
-/// the provisional handle id. Re-keying the driver to this id makes the mesh, calibration, and the
-/// DDC handle all agree on one id.
-fn effective_id(m: &MonitorInfo, aliases: &HashMap<String, String>) -> String {
-    if let Some(target) = aliases.get(&m.id) {
-        return target.clone();
-    }
-    m.monitor_id().unwrap_or_else(|| m.id.clone())
-}
+fn capture_b_and_return<D, L, C>(
+    switcher: &mut LocalSwitcher<D, L, C>,
+    monitor_id: &str,
+    monitor_model_token: Option<String>,
+    source_a: u16,
+) -> Result<CaptureBSuccess, String>
+where
+    D: MonitorDriver,
+    L: screenhop_core::Delayer,
+    C: screenhop_core::Clock,
+{
+    let mut candidate: Option<(u16, u8)> = None;
+    let mut source_b = None;
 
-/// The de-duplicated list of `(effective_id, label)` to show + drive: only monitors with a real
-/// cross-PC identity (an EDID `monitor_id` or a user alias), collapsed by effective id so the same
-/// physical panel seen via multiple GPU backends (WinApi + Nvapi) is one row. Anonymous handles
-/// (no EDID, no alias) are omitted — they can't be correlated across PCs; alias one (see
-/// `--monitors`) to include it. Call this BEFORE `remap_ids` (it reads the original handle ids).
-fn identified_monitors(
-    driver: &DdcHiDriver,
-    aliases: &HashMap<String, String>,
-) -> Vec<(String, String)> {
-    let mut out: Vec<(String, String)> = Vec::new();
-    let mut seen: HashSet<String> = HashSet::new();
-    for m in driver.monitors() {
-        if !(aliases.contains_key(&m.id) || m.monitor_id().is_some()) {
-            continue; // anonymous handle — no stable cross-PC identity
+    for attempt in 0..SETUP_POLL_ATTEMPTS {
+        let reading = switcher.driver_mut().try_read_input(monitor_id);
+        if let Some(found) = update_distinct_candidate(source_a, &mut candidate, reading) {
+            source_b = Some(found);
+            break;
         }
-        let eid = effective_id(&m, aliases);
-        if !seen.insert(eid.clone()) {
-            continue; // same physical monitor via another backend
+        if attempt + 1 < SETUP_POLL_ATTEMPTS {
+            std::thread::sleep(SETUP_POLL_INTERVAL);
         }
-        let mfr = m.manufacturer.clone().unwrap_or_default();
-        let model = m.model.clone().unwrap_or_else(|| "Monitor".to_string());
-        let label = format!("{mfr} {model}").trim().to_string();
-        let label = if label.is_empty() { eid.clone() } else { label };
-        out.push((eid, label));
     }
-    out
+
+    let Some(source_b) = source_b else {
+        return Err(
+            "Source B was not observed reliably within 30 seconds. Use the monitor's physical input control to return to this PC; no configuration was saved."
+                .to_owned(),
+        );
+    };
+
+    let mut proof = LocalConfig {
+        selected_monitor: Some(monitor_id.to_owned()),
+        selected_monitor_model_token: monitor_model_token,
+        ..LocalConfig::default()
+    };
+    proof.source_mut(SourceSlot::A).confirmed_value = Some(source_a);
+    proof.source_mut(SourceSlot::B).confirmed_value = Some(source_b);
+    proof.last_requested = Some(SourceSlot::B);
+
+    let return_report = switcher.switch_to(&mut proof, SourceSlot::A);
+    if !matches!(
+        return_report.status,
+        LocalSwitchStatus::Executed(SwitchOutcome::Success)
+    ) {
+        let detail = return_report
+            .detail
+            .as_deref()
+            .unwrap_or("the return command was not confirmed");
+        return Err(format!(
+            "Source B was captured as 0x{source_b:02X}, but screen-hop could not confirm the return to A: {detail}. Use the monitor's physical input control; setup was not saved."
+        ));
+    }
+
+    Ok(CaptureBSuccess {
+        source_b,
+        return_report,
+    })
 }
 
-/// A compact, tray-friendly label for a peer segment. The segment is narrow, so prefer the peer's
-/// announced friendly name (hostname or configured `name`), truncating with an ellipsis if it's
-/// long; fall back to a short id prefix when no name was announced yet (better than a 64-char hex
-/// blob). Kept pure so it can be unit-tested without a running mesh.
-fn short_peer_label(name: &str, id: &str) -> String {
-    const MAX: usize = 12;
-    let name = name.trim();
-    if name.is_empty() {
-        return id.chars().take(6).collect();
-    }
-    if name.chars().count() > MAX {
-        let head: String = name.chars().take(MAX - 1).collect();
-        format!("{head}…")
-    } else {
-        name.to_string()
-    }
-}
-
-/// Read a panel's input, retrying a few times — DDC reads are flaky on some GPU backends (the
-/// first attempt often fails even when the panel is fine), so a one-shot read drops good panels.
-fn read_input_retry(driver: &mut DdcHiDriver, monitor_id: &str) -> Option<u32> {
+fn read_input_retry<D: MonitorDriver>(driver: &mut D, monitor_id: &str) -> Option<u32> {
     for attempt in 0..8 {
-        if let Some(v) = driver.try_read_input(monitor_id) {
-            return Some(v);
+        if let Some(value) = driver.try_read_input(monitor_id) {
+            return Some(value);
         }
         if attempt < 7 {
             std::thread::sleep(Duration::from_millis(250));
@@ -281,509 +906,140 @@ fn read_input_retry(driver: &mut DdcHiDriver, monitor_id: &str) -> Option<u32> {
     None
 }
 
-/// Periodic reconcile sweep (the cross-platform half of the OS trigger; the Windows
-/// `WM_DISPLAYCHANGE` hook is a documented follow-up). Reads each panel's live `0x60` THROUGH the
-/// actuator thread (so the driver stays on its own thread and no lock is held during the slow read),
-/// then folds the results into ownership under a brief lock.
-fn reconcile_loop(
-    reads_tx: mpsc::Sender<ActuatorRequest>,
-    state: Arc<Mutex<MeshState>>,
-    calibration: CalibrationStore,
-    me: String,
-    monitor_ids: Vec<String>,
-) {
-    if monitor_ids.is_empty() {
-        return;
+fn update_distinct_candidate(
+    source_a: u16,
+    candidate: &mut Option<(u16, u8)>,
+    reading: Option<u32>,
+) -> Option<u16> {
+    let value = reading.and_then(|value| u16::try_from(value).ok())?;
+    if value == source_a {
+        *candidate = None;
+        return None;
     }
-    loop {
-        std::thread::sleep(Duration::from_secs(4));
-        let mut reads: Vec<(String, Option<u32>)> = Vec::with_capacity(monitor_ids.len());
-        for id in &monitor_ids {
-            let (reply, rx) = mpsc::channel();
-            if reads_tx
-                .send(ActuatorRequest::Read {
-                    monitor_id: id.clone(),
-                    reply,
-                })
-                .is_err()
-            {
-                return; // actuator thread gone
+
+    match candidate {
+        Some((previous, count)) if *previous == value => {
+            *count = count.saturating_add(1);
+            if *count >= 2 {
+                return Some(value);
             }
-            let val = rx.recv_timeout(Duration::from_secs(20)).ok().flatten();
-            reads.push((id.clone(), val));
         }
-        let now = wall_ms();
-        let mut online: HashSet<String> = {
-            let st = state.lock().unwrap_or_else(|e| e.into_inner());
-            st.peers.online(now, 20_000).into_iter().collect()
-        };
-        online.insert(me.clone());
-        let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
-        reconcile_reads(&mut st.ownership, &calibration, &online, &reads, now);
+        _ => *candidate = Some((value, 1)),
+    }
+    None
+}
+
+fn toggle_target(state: SourceState, last_requested: Option<SourceSlot>) -> Option<SourceSlot> {
+    match state {
+        SourceState::A => Some(SourceSlot::B),
+        SourceState::B => Some(SourceSlot::A),
+        SourceState::Unreadable => last_requested.map(SourceSlot::opposite),
+        SourceState::Unknown(_) | SourceState::Unconfigured => None,
     }
 }
 
-/// Live mode: the real agent.
-fn run_live() -> Result<LiveExit, slint::PlatformError> {
-    let app = AppWindow::new()?;
-    app.set_dev_chrome(false);
-    app.set_presets(ModelRc::from(Rc::new(VecModel::default())));
-    app.set_presets_enabled(false);
-    app.set_read_only_mode(false);
-    app.set_online_count(1);
-    app.set_screen(0); // tray flyout
+fn toggle_request(config: &LocalConfig, state: SourceState) -> Option<(SourceSlot, WorkerCommand)> {
+    let target = toggle_target(state, config.last_requested)?;
+    Some((
+        target,
+        WorkerCommand::SwitchTo {
+            config: config.clone(),
+            source: target,
+        },
+    ))
+}
 
-    let config_dir = match persist::ensure_config_dir() {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("screen-hop --live: cannot open config dir: {e}");
-            return run_readonly(app, "read-only".into(), &[], &HashMap::new())
-                .map(|()| LiveExit::Quit);
-        }
-    };
-    let identity = persist::load_or_create_identity(&config_dir).unwrap_or_else(|e| {
-        eprintln!("screen-hop --live: identity error: {e}; using an ephemeral identity");
-        PeerIdentity::generate()
-    });
-    let cfg = load_live_config(&config_dir);
-    let can_actuate = cfg.can_actuate;
-    let secret = persist::load_secret(&config_dir).ok().flatten();
-    let calibration = persist::load_calibration(&config_dir).unwrap_or_default();
-    let mut labels = persist::load_labels(&config_dir).unwrap_or_default();
-
-    // --- actuator thread: owns the non-Send DdcHiDriver, services Switch/Read requests ----------
-    let (req_tx, req_rx) = mpsc::channel::<ActuatorRequest>();
-    let (mon_tx, mon_rx) = mpsc::channel::<Vec<(String, String)>>();
-    {
-        let peer_id = identity.peer_id();
-        let calibration = calibration.clone();
-        let aliases = cfg.monitor_aliases.clone();
-        let mut quirks = QuirksDb::with_shipped();
-        if let Err(e) = quirks.load_local(&config_dir.join("quirks-local.json")) {
-            eprintln!("screen-hop --live: cannot load learned monitor quirks: {e}");
-        }
-        if let Err(e) = quirks.load_user(&config_dir.join("quirks-user.json")) {
-            eprintln!("screen-hop --live: cannot load user monitor quirks: {e}");
-        }
-        std::thread::spawn(move || {
-            let mut driver = DdcHiDriver::enumerate();
-            let mons = identified_monitors(&driver, &aliases);
-            driver.remap_ids(|m| effective_id(m, &aliases));
-            let _ = mon_tx.send(mons);
-
-            if !can_actuate {
-                for req in req_rx {
-                    match req {
-                        ActuatorRequest::Switch { reply, .. } => {
-                            // Defensive fallback: a read-only node is not attached to the mesh as
-                            // an actuator, but if an internal caller sends a switch anyway, report
-                            // an honest failure and never touch DDC.
-                            let _ = reply.send(ActuationReport::new(SwitchOutcome::Failed, None));
-                        }
-                        ActuatorRequest::Read { monitor_id, reply } => {
-                            let _ = reply.send(driver.try_read_input(&monitor_id));
-                        }
-                    }
-                }
-                return;
-            }
-
-            let exec = SwitchExecutor::new(driver, RealDelayer, RealClock::default());
-            let mut actuator = LocalActuator::new(peer_id, exec, quirks, calibration);
-            for req in req_rx {
-                match req {
-                    ActuatorRequest::Switch { monitor_id, reply } => {
-                        let _ = reply.send(actuator.perform_switch(&monitor_id));
-                    }
-                    ActuatorRequest::Read { monitor_id, reply } => {
-                        let _ = reply.send(actuator.driver_mut().try_read_input(&monitor_id));
-                    }
-                }
-            }
-        });
-    }
-    let monitors = mon_rx.recv().unwrap_or_default();
-    let monitor_ids: Vec<String> = monitors.iter().map(|(id, _)| id.clone()).collect();
-    for (id, label) in &monitors {
-        labels.entry(id.clone()).or_insert_with(|| label.clone());
-    }
-    if monitor_ids.is_empty() {
-        eprintln!("screen-hop --live: no DDC/CI monitors found (enable DDC/CI in the OSD).");
-    }
-
-    // A mesh secret is required to form the mesh. First run (no secret) → onboarding wizard, so a
-    // new user can pair from the window instead of hand-creating a file.
-    let Some(secret) = secret else {
-        return run_first_run_wizard(app, &config_dir);
-    };
-
-    // --- mesh node + agent ----------------------------------------------------------------------
-    let recon_tx = req_tx.clone(); // a second handle to the actuator thread, for reconcile reads
-    let node = Node::new(identity, &secret).with_pin_store(persist::pins_path(&config_dir));
-    let node = if can_actuate {
-        node.with_actuator(ChannelActuator::new(req_tx))
-    } else {
-        node
-    };
-    let me = node.peer_id();
-
-    let listener = match TcpListener::bind(("0.0.0.0", cfg.port)) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("screen-hop --live: cannot bind port {}: {e}", cfg.port);
-            return run_readonly(app, me, &monitor_ids, &labels).map(|()| LiveExit::Quit);
-        }
-    };
-    let self_addr: SocketAddr = ([127, 0, 0, 1], cfg.port).into();
-
-    let mut manual = ManualHosts::new();
-    for h in &cfg.manual_hosts {
-        manual.add(h);
-    }
-    let mdns = MdnsDiscovery::start().ok();
-
-    let (intent_tx, intent_rx) = mpsc::channel::<UiIntent>();
-    // Announce a friendly name (the machine's hostname, or the configured name) instead of the
-    // 64-char peer id, so peers show up readably in each other's tray.
-    let agent_name = {
-        let configured = cfg.name.trim();
-        if !configured.is_empty() && configured != "screen-hop" {
-            configured.to_string()
-        } else {
-            std::env::var("COMPUTERNAME")
-                .ok()
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| "screen-hop".to_string())
-        }
-    };
-    let agent = LiveAgent::new(node, agent_name, can_actuate, self_addr, manual, mdns);
-    let agent_state = agent.state();
-    std::thread::spawn(move || agent.run(listener, intent_rx));
-
-    // Periodic reconcile sweep (the cross-platform half of the OS trigger).
-    {
-        let state = Arc::clone(&agent_state);
-        let cal = calibration.clone();
-        let me = me.clone();
-        let mons = monitor_ids.clone();
-        std::thread::spawn(move || reconcile_loop(recon_tx, state, cal, me, mons));
-    }
-
-    // --- controller + UI binding ----------------------------------------------------------------
-    let mut controller = Controller::new(me.clone(), Arc::clone(&agent_state), 20_000);
-    for (id, label) in &labels {
-        controller.set_label(id, label);
-    }
-    let controller = Rc::new(controller);
-    let monitor_ids = Rc::new(monitor_ids);
-
-    // Persistent models the Timer updates in place (so on_switch can flip a row instantly).
-    let monitors_vm: Rc<VecModel<MonitorRow>> = Rc::new(VecModel::default());
-    let peers_vm: Rc<VecModel<Peer>> = Rc::new(VecModel::default());
-    app.set_monitors(ModelRc::from(monitors_vm.clone()));
-    app.set_peers(ModelRc::from(peers_vm.clone()));
-
-    // Shared binding (for on_switch index→id resolution) + pending switches (monitor_id → target).
-    let mut initial_binding = bind::build_tray(
-        &controller,
-        &monitor_ids,
-        std::slice::from_ref(&me),
-        &["This PC".to_string()],
-    );
-    if let Some(peer) = initial_binding.peers.first_mut() {
-        peer.enabled = can_actuate;
-    }
-    let binding = Rc::new(RefCell::new(initial_binding));
-    let pending: Rc<RefCell<HashMap<String, (String, Instant)>>> =
-        Rc::new(RefCell::new(HashMap::new()));
-    let capable_peer_ids: Rc<RefCell<HashSet<String>>> = Rc::new(RefCell::new(HashSet::new()));
-    if can_actuate {
-        capable_peer_ids.borrow_mut().insert(me.clone());
-    }
-
-    // on_switch: enqueue the intent, mark the monitor pending, flip the row to in-flight now.
-    {
-        let binding = Rc::clone(&binding);
-        let pending = Rc::clone(&pending);
-        let capable_peer_ids = Rc::clone(&capable_peer_ids);
-        let monitors_vm = monitors_vm.clone();
-        app.on_switch(move |mi, pi| {
-            let Some((monitor_id, target)) = binding.borrow().resolve_switch(mi, pi) else {
-                eprintln!("screen-hop: click row={mi} seg={pi} -> no monitor/peer at those indices");
-                return;
+fn monitor_descriptors(driver: &DdcHiDriver) -> Vec<MonitorDescriptor> {
+    driver
+        .monitors()
+        .into_iter()
+        .map(|monitor| {
+            let manufacturer = monitor.manufacturer.as_deref().unwrap_or("").trim();
+            let model = monitor.model.as_deref().unwrap_or("Monitor").trim();
+            let name = format!("{manufacturer} {model}").trim().to_owned();
+            let name = if name.is_empty() {
+                "Monitor".to_owned()
+            } else {
+                name
             };
-            if !target_can_actuate(&capable_peer_ids.borrow(), &target) {
-                eprintln!(
-                    "screen-hop: switch rejected: target peer {target} is offline or read-only"
-                );
-                return;
+            let fingerprint = monitor
+                .monitor_id()
+                .map(|id| format!(" · fingerprint {id}"))
+                .unwrap_or_default();
+            let model_token = monitor.model_token();
+            MonitorDescriptor {
+                id: monitor.id.clone(),
+                name,
+                detail: format!("{} · {}{fingerprint}", monitor.backend, monitor.id),
+                model_token,
             }
-            eprintln!("screen-hop: click row={mi} seg={pi} -> switch monitor {monitor_id} to peer {target}");
-            let _ = intent_tx.send(UiIntent::Switch {
-                monitor_id: monitor_id.clone(),
-                target_peer_id: target.clone(),
-            });
-            pending
-                .borrow_mut()
-                .insert(monitor_id, (target, Instant::now()));
-            if let Some(mut row) = monitors_vm.row_data(mi as usize) {
-                row.switching = true;
-                monitors_vm.set_row_data(mi as usize, row);
-            }
-        });
-    }
-
-    // Refresh timer: rebuild view models from live mesh state ~1.4×/s.
-    let timer = Timer::default();
-    {
-        let controller = Rc::clone(&controller);
-        let monitor_ids = Rc::clone(&monitor_ids);
-        let binding = Rc::clone(&binding);
-        let pending = Rc::clone(&pending);
-        let capable_peer_ids = Rc::clone(&capable_peer_ids);
-        let monitors_vm = monitors_vm.clone();
-        let peers_vm = peers_vm.clone();
-        let app_weak = app.as_weak();
-        let me = me.clone();
-        timer.start(TimerMode::Repeated, Duration::from_millis(700), move || {
-            let Some(app) = app_weak.upgrade() else {
-                return;
-            };
-            let now = wall_ms();
-
-            // peers = this PC first, then every known peer.
-            let mut peer_ids = vec![me.clone()];
-            let mut peer_labels = vec!["This PC".to_string()];
-            let mut capable = HashSet::new();
-            let mut online_count = 1_i32; // this process is running even when configured read-only
-            if can_actuate {
-                capable.insert(me.clone());
-            }
-            for pv in controller.peer_views(now) {
-                if pv.id != me && pv.online {
-                    online_count += 1;
-                }
-                if pv.online && pv.can_actuate {
-                    capable.insert(pv.id.clone());
-                }
-                if pv.id != me {
-                    peer_labels.push(short_peer_label(&pv.name, &pv.id));
-                    peer_ids.push(pv.id);
-                }
-            }
-            let mut b = bind::build_tray(&controller, &monitor_ids, &peer_ids, &peer_labels);
-            for (peer, id) in b.peers.iter_mut().zip(peer_ids.iter()) {
-                peer.enabled = target_can_actuate(&capable, id);
-            }
-            *capable_peer_ids.borrow_mut() = capable;
-
-            // Expire stale pending entries (target reached, or timed out), then mark in-flight rows.
-            {
-                let mut p = pending.borrow_mut();
-                p.retain(|mon, (target, since)| {
-                    let arrived = b
-                        .monitors
-                        .iter()
-                        .zip(b.monitor_ids.iter())
-                        .find(|(_, id)| *id == mon)
-                        .map(|(row, _)| {
-                            row.active >= 0 && peer_ids.get(row.active as usize) == Some(target)
-                        })
-                        .unwrap_or(false);
-                    // The executor has a 15 s ceiling and the authenticated transport allows a
-                    // small response margin; keep progress visible for that same full window.
-                    !arrived && since.elapsed() < Duration::from_secs(25)
-                });
-            }
-            let mut rows: Vec<_> = b.monitors.clone();
-            {
-                let p = pending.borrow();
-                for (row, id) in rows.iter_mut().zip(b.monitor_ids.iter()) {
-                    if p.contains_key(id) {
-                        row.switching = true;
-                    }
-                }
-            }
-
-            monitors_vm.set_vec(rows);
-            peers_vm.set_vec(b.peers.clone());
-            app.set_online_count(online_count);
-            app.set_degraded(controller.is_degraded(now));
-            *binding.borrow_mut() = b;
-        });
-    }
-
-    app.run().map(|()| LiveExit::Quit)
+        })
+        .collect()
 }
 
-/// First-run onboarding: no mesh secret yet. Show the wizard's Pair step; when the user commits a
-/// passphrase, save it (same `mesh-secret` format as the CLI) and ask `main()` to relaunch so the
-/// normal live path brings the mesh up. Closing the wizard just exits — the user can also drop a
-/// `mesh-secret` file in by hand (the classic path).
-fn run_first_run_wizard(
-    app: AppWindow,
-    config_dir: &std::path::Path,
-) -> Result<LiveExit, slint::PlatformError> {
-    app.set_screen(1); // onboarding wizard
-    app.set_wizard_step(1); // Pair
-
-    let relaunch = Rc::new(std::cell::Cell::new(false));
-    {
-        let app_weak = app.as_weak();
-        let config_dir = config_dir.to_path_buf();
-        let relaunch = Rc::clone(&relaunch);
-        app.on_wizard_pair(move || {
-            let Some(app) = app_weak.upgrade() else {
-                return;
-            };
-            let secret = app.get_wizard_secret().trim().to_string();
-            if secret.is_empty() {
-                app.set_wizard_secret("".into());
-                app.set_wizard_error("Enter at least one non-space character.".into());
-                return;
-            }
-            app.set_wizard_error("".into());
-            if let Err(e) = persist::save_secret(&config_dir, &secret) {
-                eprintln!("screen-hop --live: could not save mesh secret: {e}");
-                app.set_wizard_error(format!("Could not save the passphrase: {e}").into());
-                return;
-            }
-            relaunch.set(true);
-            let _ = slint::quit_event_loop();
-        });
+fn run_monitors() {
+    let mut driver = DdcHiDriver::enumerate();
+    let monitors = driver.monitors();
+    println!("{} display handle(s) detected:", monitors.len());
+    for (index, monitor) in monitors.iter().enumerate() {
+        let input = driver.try_read_input(&monitor.id);
+        println!();
+        println!(
+            "#{index}  {}",
+            monitor.model.as_deref().unwrap_or("Monitor")
+        );
+        println!("    local id   : {}", monitor.id);
+        println!("    selected id: {}", monitor.id);
+        println!("    backend    : {}", monitor.backend);
+        match input {
+            Some(value) => println!("    input 0x60 : 0x{value:02X}"),
+            None => println!("    input 0x60 : unreadable"),
+        }
     }
-    app.on_wizard_close(|| {
-        let _ = slint::quit_event_loop();
-    });
-
-    println!(
-        "screen-hop --live: first run — enter the SAME shared passphrase on each PC to pair, or drop \
-         a `mesh-secret` file into {} by hand.",
-        config_dir.display()
-    );
-    app.run()?;
-    Ok(if relaunch.get() {
-        LiveExit::Relaunch
-    } else {
-        LiveExit::Quit
-    })
 }
 
-/// Read-only fallback: show the enumerated monitors with no mesh (no secret / bind failure).
-fn run_readonly(
-    app: AppWindow,
-    me: String,
-    monitor_ids: &[String],
-    labels: &HashMap<String, String>,
-) -> Result<(), slint::PlatformError> {
-    // This path has no functioning mesh actuator (config-dir or listen failure). Replace every
-    // design/default model with honest live data and mark the switch controls unavailable.
-    app.set_dev_chrome(false);
-    app.set_degraded(false);
-    app.set_read_only_mode(true);
-    app.set_online_count(0);
-    app.set_presets(ModelRc::from(Rc::new(VecModel::default())));
-    app.set_presets_enabled(false);
-    app.on_switch(|_, _| {
-        eprintln!("screen-hop: switch ignored because the agent is read-only");
-    });
-
-    let state = Arc::new(Mutex::new(MeshState::default()));
-    let mut controller = Controller::new(me, state, 20_000);
-    for (id, label) in labels {
-        controller.set_label(id, label);
-    }
-    let mut b = bind::build_tray(
-        &controller,
-        monitor_ids,
-        &["this-pc".to_string()],
-        &["This PC".to_string()],
-    );
-    for peer in &mut b.peers {
-        peer.enabled = false;
-    }
-    app.set_monitors(ModelRc::from(Rc::new(VecModel::from(b.monitors))));
-    app.set_peers(ModelRc::from(Rc::new(VecModel::from(b.peers))));
-    app.set_screen(0);
-    app.run()
-}
-
-/// Design-preview / snapshot mode (the original behaviour).
 fn run_preview(args: &[String]) -> Result<(), slint::PlatformError> {
     let app = AppWindow::new()?;
-
-    // Keep the intentionally interactive design preview available, while live/read-only modes
-    // remain fail-closed. These opt-ins are never set by `run_live` or `run_readonly`.
-    app.set_dev_chrome(true);
-    app.set_simulate_switches(true);
-    let preview_preset_names = vec![
-        "Trading".to_string(),
-        "Work".to_string(),
-        "Couch".to_string(),
-    ];
-    app.set_presets(ModelRc::from(Rc::new(VecModel::from(bind::build_presets(
-        &preview_preset_names,
-        Some(0),
-    )))));
-    app.set_presets_enabled(true);
-
-    if args.iter().any(|a| a == "--dark") {
+    if args.iter().any(|argument| argument == "--dark") {
         app.set_dark(true);
     }
-    if let Some(s) = arg_value(args, "--screen") {
-        app.set_screen(match s.as_str() {
-            "wizard" => 1,
-            "dialog" => 2,
-            "deskmap" => 3,
-            "settings" => 4,
+    if let Some(screen) = arg_value(args, "--screen") {
+        app.set_screen(match screen.as_str() {
+            "setup" | "wizard" => 1,
+            "settings" => 2,
             _ => 0,
         });
     }
-    if let Some(s) = arg_value(args, "--step") {
-        if let Ok(n) = s.parse::<i32>() {
-            app.set_wizard_step(n);
-        }
-    }
-    if let Some(s) = arg_value(args, "--dialog") {
-        if let Ok(n) = s.parse::<i32>() {
-            app.set_dialog(n);
-        }
+    if let Some(step) = arg_value(args, "--step").and_then(|value| value.parse::<i32>().ok()) {
+        app.set_setup_step(step.clamp(1, 4));
     }
 
     if let Some(path) = arg_value(args, "--shot") {
-        app.set_dev_chrome(false);
-        // Settle delay before snapshotting (lets fonts/layout/animations land). Override with
-        // `--delay <ms>` for slower machines / heavier surfaces.
-        let delay_ms = arg_value(args, "--delay")
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(600);
+        let delay = arg_value(args, "--delay")
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(1_000);
         let weak = app.as_weak();
-        slint::Timer::single_shot(std::time::Duration::from_millis(delay_ms), move || {
-            if let Some(app) = weak.upgrade() {
-                let ok = match app.window().take_snapshot() {
-                    Ok(buf) => match image::save_buffer(
-                        &path,
-                        buf.as_bytes(),
-                        buf.width(),
-                        buf.height(),
+        Timer::single_shot(Duration::from_millis(delay), move || {
+            let Some(app) = weak.upgrade() else {
+                return;
+            };
+            let saved = app
+                .window()
+                .take_snapshot()
+                .map_err(|error| error.to_string())
+                .and_then(|buffer| {
+                    image::save_buffer(
+                        Path::new(&path),
+                        buffer.as_bytes(),
+                        buffer.width(),
+                        buffer.height(),
                         image::ExtendedColorType::Rgba8,
-                    ) {
-                        Ok(()) => true,
-                        Err(e) => {
-                            eprintln!("save error: {e}");
-                            false
-                        }
-                    },
-                    Err(e) => {
-                        eprintln!("snapshot error: {e}");
-                        false
-                    }
-                };
-                if !ok {
-                    let _ = slint::quit_event_loop();
-                    // Non-zero exit so CI / design-diff scripts notice a failed render.
-                    std::process::exit(1);
-                }
+                    )
+                    .map_err(|error| error.to_string())
+                });
+            if let Err(error) = saved {
+                eprintln!("screen-hop snapshot failed: {error}");
+                std::process::exit(1);
             }
             let _ = slint::quit_event_loop();
         });
@@ -794,58 +1050,63 @@ fn run_preview(args: &[String]) -> Result<(), slint::PlatformError> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-    use std::fs;
-    use std::sync::atomic::{AtomicU32, Ordering};
+    use super::*;
 
-    use super::{load_live_config, short_peer_label, target_can_actuate};
-
-    static TEMP_COUNTER: AtomicU32 = AtomicU32::new(0);
-
-    fn temp_config_dir() -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "screenhop-ui-config-{}-{}",
-            std::process::id(),
-            TEMP_COUNTER.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir_all(&dir).unwrap();
-        dir
+    #[test]
+    fn toggle_hint_is_safe_for_known_and_unreadable_states() {
+        assert_eq!(toggle_target(SourceState::A, None), Some(SourceSlot::B));
+        assert_eq!(toggle_target(SourceState::B, None), Some(SourceSlot::A));
+        assert_eq!(
+            toggle_target(SourceState::Unreadable, Some(SourceSlot::B)),
+            Some(SourceSlot::A)
+        );
+        assert_eq!(toggle_target(SourceState::Unreadable, None), None);
+        assert_eq!(toggle_target(SourceState::Unknown(0x44), None), None);
     }
 
     #[test]
-    fn short_label_prefers_a_short_name_verbatim() {
-        assert_eq!(short_peer_label("Couch", "abc123def456"), "Couch");
+    fn toggle_request_writes_exactly_the_target_shown_as_pending() {
+        let config = LocalConfig::default();
+        let (displayed_target, command) = toggle_request(&config, SourceState::A).unwrap();
+        match command {
+            WorkerCommand::SwitchTo { source, .. } => assert_eq!(source, displayed_target),
+            WorkerCommand::Read { .. }
+            | WorkerCommand::CaptureA { .. }
+            | WorkerCommand::CaptureBAndReturn { .. } => {
+                panic!("toggle must enqueue an explicit SwitchTo command")
+            }
+        }
     }
 
     #[test]
-    fn short_label_truncates_long_names_with_an_ellipsis() {
-        let out = short_peer_label("DESKTOP-LONGHOSTNAME", "id");
-        assert_eq!(out, "DESKTOP-LON…");
-        assert_eq!(out.chars().count(), 12);
+    fn second_source_requires_two_matching_distinct_reads() {
+        let mut candidate = None;
+        assert_eq!(update_distinct_candidate(0x0f, &mut candidate, None), None);
+        assert_eq!(
+            update_distinct_candidate(0x0f, &mut candidate, Some(0x11)),
+            None
+        );
+        assert_eq!(
+            update_distinct_candidate(0x0f, &mut candidate, Some(0x12)),
+            None
+        );
+        assert_eq!(
+            update_distinct_candidate(0x0f, &mut candidate, Some(0x12)),
+            Some(0x12)
+        );
     }
 
     #[test]
-    fn short_label_falls_back_to_a_short_id_prefix_when_unnamed() {
-        // Better a 6-char prefix than a 64-char hex blob in a narrow tray segment.
-        assert_eq!(short_peer_label("   ", "0123456789abcdef"), "012345");
-    }
-
-    #[test]
-    fn malformed_config_fails_closed_for_local_actuation() {
-        let dir = temp_config_dir();
-        fs::write(dir.join(screenhop_app::persist::CONFIG_FILE), b"not json").unwrap();
-
-        let cfg = load_live_config(&dir);
-
-        assert!(!cfg.can_actuate);
-        let _ = fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn switch_target_must_be_in_the_live_actuator_set() {
-        let capable = HashSet::from(["writer".to_string()]);
-        assert!(target_can_actuate(&capable, "writer"));
-        assert!(!target_can_actuate(&capable, "read-only"));
-        assert!(!target_can_actuate(&capable, "offline"));
+    fn returning_to_source_a_resets_a_partial_b_candidate() {
+        let mut candidate = None;
+        assert_eq!(
+            update_distinct_candidate(0x0f, &mut candidate, Some(0x11)),
+            None
+        );
+        assert_eq!(
+            update_distinct_candidate(0x0f, &mut candidate, Some(0x0f)),
+            None
+        );
+        assert!(candidate.is_none());
     }
 }

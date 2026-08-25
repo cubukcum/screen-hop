@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 
 use sha2::{Digest, Sha256};
 
-/// Composite, cross-PC monitor identity derived from EDID (docs/PLAN-screen-hop.md §7.2).
+/// Composite monitor identity derived from EDID.
 ///
 /// No single field is unique enough on its own — serials are frequently blank/zero or
 /// model-constant — so the stable [`MonitorFingerprint::monitor_id`] hashes the identity tuple
@@ -96,13 +96,13 @@ impl MonitorFingerprint {
         }
     }
 
-    /// Stable cross-PC id: first 12 hex chars of SHA-256 over the composite identity fields.
+    /// Stable id: first 12 hex chars of SHA-256 over the composite identity fields.
     ///
     /// `week`/`year` and the raw-EDID hash are intentionally **excluded**: a backend that exposes
     /// only parsed identity (e.g. ddc-hi on Windows, via [`from_parts`]) cannot supply manufacture
     /// week/year, so including them would give the same physical panel a different id depending on
-    /// which OS/backend enumerated it — fragmenting calibration and ownership across a mixed-OS
-    /// mesh (the normal case). The id therefore covers only fields every backend can produce:
+    /// which OS/backend enumerated it. The id therefore covers only fields every backend can
+    /// produce:
     /// manufacturer, product code, numeric serial, and ASCII serial.
     ///
     /// [`from_parts`]: MonitorFingerprint::from_parts
@@ -253,7 +253,7 @@ mod tests {
     fn from_parts_matches_edid_identity() {
         // Same identity tuple via parts vs EDID -> SAME monitor_id, even though from_parts cannot
         // supply week/year/raw-EDID. This is the cross-backend stability the join key requires:
-        // a Windows (parts) peer and a Linux (raw EDID) peer must agree on the id for one panel.
+        // Windows parsed fields and Linux raw EDID must agree on the id for one panel.
         let via_edid = MonitorFingerprint::from_edid(&sample_edid(1598, None)).unwrap();
         let via_parts = MonitorFingerprint::from_parts("AOC", 0x1234, 1598, None);
         assert_eq!(via_parts.pnp_manufacturer, via_edid.pnp_manufacturer);

@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased — local two-input reset
+
+### Changed
+
+- Refocused screen-hop on one local PC controlling one selected monitor with two captured inputs.
+- Replaced peer routing, pairing, discovery, distributed ownership, presets, and network state with
+  a versioned local configuration and guarded A/B source selection.
+- Made normal startup open the real local product; design preview is now explicit.
+- Replaced the multi-PC interface with a compact toggle, explicit source selection, and guided
+  one-PC round-trip setup.
+
+### Removed
+
+- LAN sockets and mDNS discovery.
+- Mesh secrets, peer identities, encryption/handshake code, lease locks, and replicated ownership.
+- Peer, partition, stranded-peer, desk-map, and multi-monitor preset surfaces.
+- The packaged raw-input writer and legacy two-PC diagnostic flow.
+
+### Safety
+
+- The backend accepts only Source A or Source B and resolves those slots to two distinct,
+  locally observed `u16` values at the actuation boundary.
+- Incomplete, corrupt, duplicate, out-of-range, or blocked configuration fails closed.
+- Inactive-input read failure no longer prevents a return write when the monitor handle remains
+  available; accepted writes with unavailable read-back remain explicitly inconclusive.
+- Hardware addressing uses the backend's unique local handle rather than collapsing identical
+  displays onto a fingerprint; model-wide quirks are applied separately.
+- Invalid local/user quirk files disable writes instead of silently dropping safety restrictions.
+
 ## v0.2.0-alpha — safer live controls and multi-peer resilience (pre-release)
 
 ### Added

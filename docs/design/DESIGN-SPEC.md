@@ -1,6 +1,13 @@
 # screen-hop — UI Implementation Spec
 
-> Distilled from the Claude Design handoff in docs/design/screen-hop/. Source of truth for the M5 Slint UI (decision D12). Auto-generated from the design-extraction pass; edit the handoff + re-extract if the design changes.
+> [!WARNING]
+> **LEGACY / ARCHIVED MULTI-PC DESIGN.** This document describes the retired LAN/peer product and
+> is not a current implementation source of truth. The active product definition is
+> [`docs/PLAN-screen-hop.md`](../PLAN-screen-hop.md): one local PC, one selected monitor, and two
+> captured inputs. Retain this file only as historical visual reference.
+
+> Distilled from the Claude Design handoff in docs/design/screen-hop/. Former source of truth for
+> the retired M5 multi-PC Slint UI (decision D12).
 
 ## Consolidated tokens (light / dark)
 
@@ -2714,4 +2721,3 @@ Each peer row contains:
 - Should the 'on-accent' text color `#07210f` (dark only) ever apply to light theme, or is it dark-exclusive?
 
 ---
-

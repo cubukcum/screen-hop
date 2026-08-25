@@ -1,28 +1,17 @@
-//! screen-hop application layer: the per-peer mesh node that ties the secured transport,
-//! peer identity, replicated state, and lease lock together (milestone M3). Orchestration
-//! (presets, blind-point logic) builds on this in M4.
+//! Local application layer for toggling one monitor between exactly two configured sources.
+//!
+//! Networking and peer/mesh orchestration are intentionally not part of the compiled application
+//! surface. The core executor still owns DDC retries, verification, timing, and safety guards.
 
-pub mod actuator;
-pub mod discovery;
-pub mod harness;
-pub mod mesh;
-pub mod orchestration;
-pub mod peers;
+#[path = "local_persist.rs"]
 pub mod persist;
-pub mod reconcile;
-pub mod runtime;
+#[path = "local_switcher.rs"]
+pub mod switcher;
 
-pub use actuator::LocalActuator;
-pub use discovery::{merge, DiscoveredPeer, Discovery, ManualHosts, MdnsDiscovery, PeerSource};
-pub use harness::{soak_panel, PanelStats, SoakReport, SoakSample};
-pub use mesh::{ActuationReport, Actuator, ConnectError, MeshState, Node, Session};
-pub use orchestration::{
-    execute_plan, plan_preset, resolve_actuation, would_go_blind, ActuationError, PlannedSwitch,
-    PresetOutcome, SwitchOp, SwitchOpResult, SwitchPlan,
+pub use persist::{
+    atomic_write, default_config_dir, ensure_config_dir, load_config, save_config, ConfigError,
+    LocalConfig, SourceConfig, SourceSlot, CONFIG_FILE, LOCAL_CONFIG_VERSION,
 };
-pub use peers::{PeerPresence, PeerRegistry};
-pub use persist::AgentConfig;
-pub use reconcile::{
-    read_to_live_read, reconcile_all, reconcile_one, reconcile_reads, LiveRead, ReconcileChange,
+pub use switcher::{
+    LocalNoWriteReason, LocalSwitchReport, LocalSwitchStatus, LocalSwitcher, SourceState,
 };
-pub use runtime::{ActuatorRequest, ChannelActuator, LiveAgent, UiIntent};

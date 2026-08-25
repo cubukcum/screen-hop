@@ -1,14 +1,5 @@
 use std::collections::HashSet;
 
-/// Which physical path performs the DDC/CI switch (see docs/PLAN-screen-hop.md §6.2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SwitchDirection {
-    /// Target machine writes its own input value over its own cable. Default, reliable path.
-    PullToSelf,
-    /// Current owner writes the target's value to hand the panel away. Flaky fallback.
-    PushRelease,
-}
-
 /// Result of attempting a single DDC/CI input switch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SwitchOutcome {
@@ -20,7 +11,7 @@ pub enum SwitchOutcome {
     Failed,
     /// Refused before any write: the value is on the monitor's blocked list (soft-brick guard).
     BlockedValue,
-    /// Refused before any write: the value is not self-confirmed for this peer+monitor.
+    /// Refused before any write: the value is not locally confirmed for the selected monitor.
     NeedsCalibration,
     /// Refused: DDC/CI is unavailable (disabled in OSD or unresponsive).
     DdcUnavailable,
@@ -50,15 +41,14 @@ pub enum DdcWriteResult {
 /// A resolved request to switch one monitor to one input value.
 #[derive(Debug, Clone)]
 pub struct SwitchRequest {
-    /// Stable monitor identity (EDID fingerprint id; provisional id pre-M2).
+    /// Stable monitor identity when available, otherwise a provisional local handle id.
     pub monitor_id: String,
-    /// The VCP 0x60 value to write — MUST be self-confirmed for the acting peer.
+    /// The VCP 0x60 value to write — MUST be locally confirmed for this monitor.
     pub input_value: u32,
-    pub direction: SwitchDirection,
 }
 
-/// Per-switch policy plus the soft-brick guard inputs. `confirmed_values` are the values
-/// self-calibrated as real for the acting peer+monitor; only these may ever be written (D7).
+/// Per-switch policy plus the soft-brick guard inputs. `confirmed_values` are the values locally
+/// observed as real for the selected monitor; only these may ever be written.
 #[derive(Debug, Clone)]
 pub struct ActuationPolicy {
     pub confirmed_values: HashSet<u32>,
@@ -69,9 +59,8 @@ pub struct ActuationPolicy {
     pub settle_ms: u32,
     /// Base backoff between retries (multiplied by attempt number).
     pub backoff_ms: u32,
-    /// Per-monitor switch hard ceiling in milliseconds (D5/§6.3). The actuation loop aborts once
-    /// this elapses, regardless of `max_attempts`, so a switch provably terminates before the lease
-    /// TTL — the invariant the double-actuation guard rests on (`lease_TTL > ceiling + margin`).
+    /// Per-monitor switch hard ceiling in milliseconds. The actuation loop aborts once this
+    /// elapses, regardless of `max_attempts`.
     pub ceiling_ms: u32,
     /// When false (panel quirk), skip read-back and report assumed-success after a good write.
     pub readback_reliable: bool,

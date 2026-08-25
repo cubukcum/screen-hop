@@ -32,7 +32,7 @@ impl Delayer for RealDelayer {
     }
 }
 
-/// Injectable monotonic clock so the actuation hard-ceiling (D5/§6.3) is enforceable AND
+/// Injectable monotonic clock so the actuation hard ceiling is enforceable and
 /// unit-testable. Only differences between readings are meaningful (arbitrary epoch).
 pub trait Clock {
     /// Monotonic milliseconds since an arbitrary, fixed origin.

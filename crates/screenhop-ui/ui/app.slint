@@ -1,134 +1,105 @@
 import { Theme } from "theme.slint";
-import { TrayFlyout, MonitorRow, Peer, Preset } from "tray_flyout.slint";
-import { OnboardingWizard } from "onboarding.slint";
-import { BlindDialog, StrandedDialog, DdcDialog, PartialDialog, SwitchingDialog, DegradedDialog } from "dialogs.slint";
-import { DeskMap } from "deskmap.slint";
+import { TrayFlyout, SourceChoice } from "tray_flyout.slint";
+import { SetupWizard, DetectedMonitor } from "onboarding.slint";
 import { Settings } from "settings.slint";
 
 export { Theme }
 
-// Preview window. A small dev switcher flips between the surfaces and toggles the theme.
-// The real app surfaces these from a tray popover / wizard window fed by live mesh state.
+// screen-hop is deliberately a local utility: one selected monitor, two captured inputs, and
+// one primary toggle. Rust owns every state transition; this surface never claims that a switch
+// succeeded until the backend updates `active-source`.
 export component AppWindow inherits Window {
     title: "screen-hop";
-    default-font-family: "Segoe UI Variable Text";
+    default-font-family: Theme.font;
     background: Theme.bg;
+
     in-out property <bool> dark <=> Theme.dark;
-    in-out property <int> screen: 0;   // 0 = flyout, 1 = wizard, 2 = dialog
-    in-out property <bool> dev-chrome: false;   // opt-in design-preview controls
-    in-out property <int> wizard-step: 1;      // which onboarding step to show
-    in-out property <int> dialog: 1;           // 1 blind · 2 stranded · 3 ddc · 4 partial · 5 switching · 6 degraded
-    in-out property <int> switching-state: 0;  // SwitchingDialog state for the preview
+    in-out property <int> screen: 0; // 0 = flyout · 1 = setup · 2 = settings
 
-    in-out property <[MonitorRow]> monitors: [
-        { name: "Left 27\"", spec: "DP-1 · 1440p", active: 0, switching: false },
-        { name: "Center 32\"", spec: "HDMI-2 · 4K", active: 1, switching: false },
-        { name: "Right 27\"", spec: "DP-2 · 1440p", active: 0, switching: false },
+    // Local flyout/settings view model.
+    in-out property <string> monitor-name: "Studio monitor";
+    in-out property <string> monitor-detail: "Local DDC/CI display";
+    in-out property <[SourceChoice]> sources: [
+        { label: "Desk PC", detail: "DisplayPort · 0x0F", configured: true },
+        { label: "Laptop", detail: "HDMI 1 · 0x11", configured: true },
     ];
+    in-out property <int> active-source: 0; // -1 = current input could not be identified
+    in-out property <int> pending-source: -1; // -1 = no switch in flight
+    in-out property <bool> ready: true;
+    // 0 ready/neutral · 1 confirmed · 2 switching · 3 inconclusive/warning · 4 error
+    in-out property <int> status-kind: 0;
+    in-out property <string> status-text: "Ready";
+    in-out property <string> message: "";
 
-    // Tray inputs. The defaults drive the standalone design preview; in `--live` mode Rust
-    // overrides these (set_peers / set_presets / on_switch / …) from the backend Controller.
-    in-out property <[Peer]> peers: [
-        { label: "Work", color: Theme.pc-work, enabled: true },
-        { label: "Gam", color: Theme.pc-gaming, enabled: true },
-        { label: "Lab", color: Theme.pc-homelab, enabled: true },
+    // Setup view model. Rust advances the step only after each physical/DDC operation succeeds.
+    in-out property <[DetectedMonitor]> detected-monitors: [
+        { name: "Studio monitor", detail: "AOC Q27G3XMN · DISPLAY\\AOC1234" },
     ];
-    in-out property <[Preset]> presets: [];
-    in-out property <bool> presets-enabled: false;
-    in-out property <bool> simulate-switches: false;
-    in-out property <bool> read-only-mode: false;
-    in-out property <int> online-count: 3;
-    in-out property <bool> degraded: false;
+    in-out property <int> selected-monitor: 0;
+    in-out property <int> setup-step: 1; // 1 select · 2 capture A · 3 capture/test B · 4 name
+    in-out property <bool> setup-busy: false;
+    in-out property <string> setup-message: "";
+    in-out property <string> source-a-name: "Desk PC";
+    in-out property <string> source-b-name: "Laptop";
 
-    // Forwarded from the tray so Rust can connect them in --live mode (overriding the preview body).
-    callback switch(int, int);
-    callback apply-preset(int);
+    callback switch-source(int);
+    callback toggle();
+    callback open-setup();
+    callback open-settings();
+    callback close-settings();
+    callback setup-continue();
+    callback setup-capture-a();
+    callback setup-listen-b();
+    callback setup-finish();
+    callback setup-cancel();
 
-    // Onboarding: the passphrase typed on the wizard's Pair step, and the events Rust handles in
-    // --live mode (save the secret + relaunch into the mesh, or dismiss the first-run wizard).
-    in-out property <string> wizard-secret;
-    in-out property <string> wizard-error;
-    callback wizard-pair();
-    callback wizard-close();
+    width: screen == 0 ? 380px : screen == 1 ? 560px : 680px;
+    height: screen == 0 ? 320px : screen == 1 ? 520px : 460px;
 
-    property <int> pending-mon: -1;
-    property <int> pending-peer: -1;
-    settle := Timer {
-        interval: 1400ms;
-        running: false;
-        triggered => {
-            if (root.pending-mon >= 0) {
-                root.monitors[root.pending-mon].active = root.pending-peer;
-                root.monitors[root.pending-mon].switching = false;
-                root.pending-mon = -1;
-            }
-            self.running = false;
-        }
+    if screen == 0 : TrayFlyout {
+        width: parent.width;
+        height: parent.height;
+        monitor-name: root.monitor-name;
+        monitor-detail: root.monitor-detail;
+        sources: root.sources;
+        active-source: root.active-source;
+        pending-source: root.pending-source;
+        ready: root.ready;
+        status-kind: root.status-kind;
+        status-text: root.status-text;
+        message: root.message;
+        toggle => { root.toggle(); }
+        switch-source(index) => { root.switch-source(index); }
+        open-setup => { root.open-setup(); }
+        open-settings => { root.open-settings(); }
     }
 
-    switch(mi, pi) => {
-        if root.simulate-switches && root.pending-mon < 0 {
-            root.monitors[mi].switching = true;
-            root.pending-mon = mi;
-            root.pending-peer = pi;
-            settle.running = true;
-        }
+    if screen == 1 : SetupWizard {
+        width: parent.width;
+        height: parent.height;
+        detected-monitors: root.detected-monitors;
+        selected-monitor <=> root.selected-monitor;
+        step: root.setup-step;
+        busy: root.setup-busy;
+        message: root.setup-message;
+        source-a-name <=> root.source-a-name;
+        source-b-name <=> root.source-b-name;
+        continue => { root.setup-continue(); }
+        capture-a => { root.setup-capture-a(); }
+        listen-b => { root.setup-listen-b(); }
+        finish => { root.setup-finish(); }
+        cancel => { root.setup-cancel(); }
     }
 
-    VerticalLayout {
-        padding: 18px;
-        spacing: 14px;
-        alignment: start;
-
-        // ---- dev switcher ----
-        if dev-chrome : HorizontalLayout {
-            spacing: 8px;
-            alignment: start;
-            for opt[i] in ["Flyout", "Wizard"]: Rectangle {
-                width: 74px; height: 26px; border-radius: 6px;
-                background: screen == i ? Theme.accent-soft : Theme.layer;
-                border-width: 1px;
-                border-color: screen == i ? Theme.accent-soft-stroke : Theme.ctl-stroke;
-                TouchArea { clicked => { screen = i; } }
-                Text { text: opt; color: screen == i ? Theme.accent-text : Theme.text2; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
-            }
-            Rectangle {
-                width: 96px; height: 26px; border-radius: 6px;
-                background: Theme.layer; border-width: 1px; border-color: Theme.ctl-stroke;
-                TouchArea { clicked => { Theme.dark = !Theme.dark; } }
-                Text { text: Theme.dark ? "Light mode" : "Dark mode"; color: Theme.text2; font-size: 12px; font-weight: 600; horizontal-alignment: center; vertical-alignment: center; }
-            }
-        }
-
-        if screen == 0: TrayFlyout {
-            online-count: root.online-count;
-            degraded: root.degraded;
-            monitors: root.monitors;
-            peers: root.peers;
-            presets: root.presets;
-            presets-enabled: root.presets-enabled;
-            read-only-mode: root.read-only-mode;
-            toggle-theme => { Theme.dark = !Theme.dark; }
-            switch(mi, pi) => { root.switch(mi, pi); }
-            apply-preset(pi) => { root.apply-preset(pi); }
-        }
-
-        if screen == 1: OnboardingWizard {
-            step <=> root.wizard-step;
-            pair-secret <=> root.wizard-secret;
-            pair-error <=> root.wizard-error;
-            pair => { root.wizard-pair(); }
-            close => { root.wizard-close(); }
-        }
-
-        if screen == 2 && dialog == 1: BlindDialog { }
-        if screen == 2 && dialog == 2: StrandedDialog { }
-        if screen == 2 && dialog == 3: DdcDialog { }
-        if screen == 2 && dialog == 4: PartialDialog { }
-        if screen == 2 && dialog == 5: SwitchingDialog { state: root.switching-state; }
-        if screen == 2 && dialog == 6: DegradedDialog { }
-
-        if screen == 3: DeskMap { }
-        if screen == 4: Settings { }
+    if screen == 2 : Settings {
+        width: parent.width;
+        height: parent.height;
+        dark <=> root.dark;
+        monitor-name: root.monitor-name;
+        monitor-detail: root.monitor-detail;
+        sources: root.sources;
+        ready: root.ready;
+        close => { root.close-settings(); }
+        rerun-setup => { root.open-setup(); }
     }
 }

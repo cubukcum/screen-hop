@@ -1,5 +1,11 @@
 # CODING AGENTS: READ THIS FIRST
 
+> [!WARNING]
+> **LEGACY / ARCHIVED MULTI-PC DESIGN HANDOFF.** Do not implement the peer/LAN behavior described
+> below. The current source of truth is [`docs/PLAN-screen-hop.md`](../../PLAN-screen-hop.md): one
+> local PC, one selected monitor, and two captured inputs. This bundle remains only as historical
+> visual reference.
+
 This is a **handoff bundle** from Claude Design (claude.ai/design).
 
 A user mocked up designs in HTML/CSS/JS using an AI design tool, then exported this bundle so a coding agent can implement the designs for real.

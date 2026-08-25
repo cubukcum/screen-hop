@@ -1,40 +1,126 @@
 import { Theme } from "theme.slint";
+import { StrokeIcon } from "icons.slint";
 
-export struct Peer {
+export struct SourceChoice {
     label: string,
-    color: color,   // per-PC brand color (active segment fill)
-    enabled: bool,
+    detail: string,
+    configured: bool,
 }
 
-export struct MonitorRow {
-    name: string,
-    spec: string,
-    active: int,   // index into `peers` = the PC currently driving this monitor
-    switching: bool,   // a 0x60 write is in flight — show progress, do NOT fake the new owner yet
+global FlyoutGlyph {
+    out property <string> settings: "M9 9 L15 9 L15 15 L9 15 Z M12 5.5 L12 9 M12 15 L12 18.5 M5.5 12 L9 12 M15 12 L18.5 12 M7.5 7.5 L9.5 9.5 M14.5 14.5 L16.5 16.5 M7.5 16.5 L9.5 14.5 M14.5 9.5 L16.5 7.5";
+    out property <string> swap: "M5 8 L18 8 M15 5 L18 8 L15 11 M19 16 L6 16 M9 13 L6 16 L9 19";
+    out property <string> alert: "M12 4 L22 19.5 L2 19.5 Z M12 10 L12 14.2";
+    out property <string> monitor: "M3 5.5 L21 5.5 L21 17 L3 17 Z M9 20 L15 20 M12 17 L12 20";
 }
 
-export struct Preset {
-    name: string,
-    active: bool,
+component PrimaryButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    callback clicked;
+
+    height: 46px;
+    border-radius: 9px;
+    background: enabled ? (hit.has-hover ? #0c6f39 : Theme.accent) : Theme.subtle;
+    border-width: enabled ? 0px : 1px;
+    border-color: Theme.ctl-stroke;
+    animate background { duration: 140ms; }
+
+    hit := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+        spacing: 9px;
+        StrokeIcon {
+            width: 18px;
+            height: 18px;
+            tint: root.enabled ? #ffffff : Theme.text3;
+            sw: 1.9px;
+            commands: FlyoutGlyph.swap;
+        }
+        Text {
+            text: root.label;
+            color: root.enabled ? #ffffff : Theme.text3;
+            font-size: 14px;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+    }
 }
 
-// Variant C — "inline segmented, one click, no expand" (the selected design): each monitor row
-// carries a Work|Gam|Lab segmented control whose highlighted segment is the current owner.
+component ChoiceButton inherits Rectangle {
+    in property <string> label;
+    in property <string> detail;
+    in property <bool> enabled: true;
+    callback clicked;
+
+    height: 58px;
+    border-radius: 9px;
+    background: hit.has-hover && enabled ? Theme.accent-soft : Theme.layer2;
+    border-width: 1px;
+    border-color: hit.has-hover && enabled ? Theme.accent-soft-stroke : Theme.ctl-stroke;
+    opacity: enabled ? 1 : 0.5;
+    animate background { duration: 140ms; }
+    animate border-color { duration: 140ms; }
+
+    hit := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+
+    VerticalLayout {
+        padding-left: 13px;
+        padding-right: 13px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 2px;
+        Text {
+            text: root.label;
+            color: Theme.text;
+            font-size: 13px;
+            font-weight: 650;
+            overflow: elide;
+        }
+        Text {
+            text: root.detail;
+            color: Theme.text3;
+            font-size: 10.5px;
+            overflow: elide;
+        }
+    }
+}
+
+// Compact tray surface: a single monitor and, whenever the current input is known, exactly one
+// primary toggle. If detection is inconclusive, both explicit destinations are shown instead of
+// guessing which direction "toggle" would take.
 export component TrayFlyout inherits Rectangle {
-    in property <[MonitorRow]> monitors;
-    in property <[Peer]> peers;
-    in property <[Preset]> presets;
-    in property <bool> presets-enabled: false;
-    in property <bool> read-only-mode: false;
-    in property <int> online-count: 3;
-    in property <bool> degraded: false;   // mesh partitioned — disruptive controls are paused
-    property <bool> controls-disabled: degraded || read-only-mode;
-    in-out property <int> selected-preset: -1;   // highlighted preset (click feedback)
-    callback toggle-theme();
-    callback switch(int, int);    // (monitor-index, peer-index)
-    callback apply-preset(int);
+    in property <string> monitor-name;
+    in property <string> monitor-detail;
+    in property <[SourceChoice]> sources;
+    in property <int> active-source: -1;
+    in property <int> pending-source: -1;
+    in property <bool> ready: false;
+    in property <int> status-kind: 0;
+    in property <string> status-text;
+    in property <string> message;
 
-    width: 350px;
+    callback toggle();
+    callback switch-source(int);
+    callback open-setup();
+    callback open-settings();
+
+    property <string> source-a-label: sources.length > 0 ? sources[0].label : "Source A";
+    property <string> source-b-label: sources.length > 1 ? sources[1].label : "Source B";
+    property <string> source-a-detail: sources.length > 0 ? sources[0].detail : "Not captured";
+    property <string> source-b-detail: sources.length > 1 ? sources[1].detail : "Not captured";
+    property <string> active-label: active-source == 0 ? source-a-label : active-source == 1 ? source-b-label : "Unknown input";
+    property <string> active-detail: active-source == 0 ? source-a-detail : active-source == 1 ? source-b-detail : "The monitor did not confirm its current source";
+    property <string> target-label: active-source == 0 ? source-b-label : source-a-label;
+    property <bool> switching: pending-source >= 0;
+
     border-radius: 11px;
     background: Theme.layer;
     border-width: 1px;
@@ -42,189 +128,228 @@ export component TrayFlyout inherits Rectangle {
     drop-shadow-blur: 34px;
     drop-shadow-color: #00000026;
     drop-shadow-offset-y: 10px;
+    clip: true;
 
     VerticalLayout {
-        // ---------------- header ----------------
+        // Header
         HorizontalLayout {
-            padding: 14px;
+            padding-left: 15px;
+            padding-right: 10px;
+            padding-top: 13px;
             padding-bottom: 12px;
-            spacing: 9px;
+            spacing: 10px;
 
-            Rectangle {   // logo (click toggles theme — dev affordance, no chrome)
-                width: 26px;
-                height: 26px;
-                border-radius: 7px;
+            Rectangle {
+                width: 28px;
+                height: 28px;
+                border-radius: 8px;
                 background: @linear-gradient(160deg, #117c44 0%, #0c5e32 100%);
-                TouchArea { clicked => { root.toggle-theme(); } }
-                Path {   // screen-hop mark: monitor + hop arc (i-logo)
-                    width: 17px;
-                    height: 17px;
-                    viewbox-width: 24;
-                    viewbox-height: 24;
-                    stroke: #ffffff;
-                    stroke-width: 1.7px;
-                    fill: transparent;
-                    commands: "M2.6 8.6 L13.6 8.6 L13.6 18 L2.6 18 Z M9 21 L6.2 21 M7.8 18 L7.8 21 M12.8 7.6 C13.6 4.2 17 2.9 19.6 4.8 M20.7 3.1 L21.1 5.8 L18.4 5.9";
+                StrokeIcon {
+                    width: 18px;
+                    height: 18px;
+                    tint: #ffffff;
+                    sw: 1.8px;
+                    commands: FlyoutGlyph.monitor;
                 }
             }
 
             VerticalLayout {
+                horizontal-stretch: 1;
                 alignment: center;
-                HorizontalLayout {
-                    Text { text: "screen-"; color: Theme.text; font-size: 15px; font-weight: 600; }
-                    Text { text: "hop"; color: Theme.accent-text; font-size: 15px; font-weight: 600; }
+                spacing: 1px;
+                Text {
+                    text: root.monitor-name;
+                    color: Theme.text;
+                    font-size: 13.5px;
+                    font-weight: 650;
+                    overflow: elide;
+                }
+                Text {
+                    text: root.monitor-detail;
+                    color: Theme.text3;
+                    font-size: 10.5px;
+                    overflow: elide;
                 }
             }
 
-            Rectangle { horizontal-stretch: 1; }
-
-            Rectangle {   // status pill — amber "Degraded" when the mesh is partitioned (§8.6)
-                height: 22px;
-                border-radius: 11px;
-                background: controls-disabled ? Theme.warn-bg : Theme.accent-soft;
-                HorizontalLayout {
-                    padding-left: 9px;
-                    padding-right: 10px;
-                    spacing: 6px;
-                    VerticalLayout {   // wrap so the dot centers on the cross axis
-                        alignment: center;
-                        Rectangle { width: 6px; height: 6px; border-radius: 3px; background: controls-disabled ? Theme.warn-accent : Theme.ok-dot; }
-                    }
-                    Text { text: read-only-mode ? "Read-only" : degraded ? "Degraded" : "\{online-count} online"; color: controls-disabled ? Theme.warn-text : Theme.accent-text; font-size: 11.5px; font-weight: 600; vertical-alignment: center; }
+            Rectangle {
+                width: 34px;
+                height: 34px;
+                border-radius: 7px;
+                background: settings-hit.has-hover ? Theme.subtle : transparent;
+                settings-hit := TouchArea { clicked => { root.open-settings(); } }
+                StrokeIcon {
+                    width: 17px;
+                    height: 17px;
+                    tint: Theme.text2;
+                    commands: FlyoutGlyph.settings;
                 }
             }
         }
 
         Rectangle { height: 1px; background: Theme.stroke; }
 
-        // ---------------- monitor rows ----------------
-        for m[mi] in monitors: Rectangle {
-            VerticalLayout {
-                HorizontalLayout {
-                    padding-left: 15px;
-                    padding-right: 13px;
-                    padding-top: 13px;
-                    padding-bottom: 13px;
-                    spacing: 10px;
+        VerticalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            padding-top: 16px;
+            padding-bottom: 14px;
+            spacing: 12px;
 
+            if root.ready : Rectangle {
+                height: 68px;
+                border-radius: 9px;
+                background: Theme.layer2;
+                border-width: 1px;
+                border-color: Theme.stroke;
+                HorizontalLayout {
+                    padding-left: 13px;
+                    padding-right: 13px;
+                    spacing: 11px;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 31px;
+                            height: 31px;
+                            border-radius: 16px;
+                            background: root.active-source >= 0 ? Theme.accent-soft : Theme.warn-bg;
+                            Text {
+                                text: root.active-source >= 0 ? "ON" : "?";
+                                color: root.active-source >= 0 ? Theme.accent-text : Theme.warn-text;
+                                font-size: root.active-source >= 0 ? 9px : 16px;
+                                font-weight: 750;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
                     VerticalLayout {
                         horizontal-stretch: 1;
                         alignment: center;
                         spacing: 2px;
-                        Text { text: m.name; color: Theme.text; font-size: 13.5px; font-weight: 600; overflow: elide; }
-                        Text { text: m.spec; color: Theme.text3; font-size: 11px; overflow: elide; }
-                    }
-
-                    // In-flight: a 0x60 write takes ~1–3s and can retry — show progress, never a
-                    // faked instant owner change. Production flips `active` only on a verified
-                    // read-back; until then the row sits in this `switching` state.
-                    if m.switching : Rectangle {
-                        height: 30px;
-                        border-radius: 8px;
-                        background: Theme.warn-bg;
-                        border-width: 1px;
-                        border-color: Theme.warn-stroke;
-                        HorizontalLayout {
-                            padding-left: 12px;
-                            padding-right: 12px;
-                            spacing: 7px;
-                            alignment: center;
-                            VerticalLayout {
-                                alignment: center;
-                                Rectangle { width: 7px; height: 7px; border-radius: 3.5px; background: Theme.warn-accent; }
-                            }
-                            Text { text: "Switching… ~2s"; color: Theme.warn-text; font-size: 12px; font-weight: 600; vertical-alignment: center; }
+                        Text {
+                            text: root.active-label;
+                            color: Theme.text;
+                            font-size: 15px;
+                            font-weight: 700;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: root.active-detail;
+                            color: Theme.text3;
+                            font-size: 11px;
+                            overflow: elide;
                         }
                     }
-                    if !m.switching : Rectangle {   // segmented control
-                        height: 30px;
-                        width: min(142px, peer-segments.preferred-width);
-                        border-radius: 8px;
-                        background: Theme.subtle;
-                        border-width: 1px;
-                        border-color: Theme.ctl-stroke;
-                        clip: true;
-                        opacity: root.controls-disabled ? 0.55 : 1;
-                        peer-segments := HorizontalLayout {
-                            padding: 3px;
-                            spacing: 2px;
-                            for p[pi] in peers: Rectangle {
-                                min-width: 0px;
-                                preferred-width: min(88px, max(44px, peer-label.preferred-width + 14px));
-                                max-width: 88px;
-                                border-radius: 6px;
-                                opacity: p.enabled || pi == m.active ? 1 : 0.45;
-                                background: pi == m.active ? p.color : (seg.enabled && seg.has-hover ? Theme.stroke : transparent);
-                                animate background { duration: 110ms; }
-                                seg := TouchArea {
-                                    enabled: p.enabled && !root.controls-disabled && pi != m.active;
-                                    clicked => { root.switch(mi, pi); }
-                                }
-                                peer-label := Text {
-                                    x: 2px;
-                                    width: parent.width - 4px;
-                                    height: parent.height;
-                                    text: p.label;
-                                    color: pi == m.active ? #ffffff : Theme.text2;
-                                    font-size: 12px;
-                                    font-weight: 600;
-                                    overflow: elide;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                }
-                            }
-                        }
-                    }
-                }
-                Rectangle {   // inter-row divider (skip after the last row)
-                    height: 1px;
-                    background: mi < monitors.length - 1 ? Theme.stroke : transparent;
                 }
             }
+
+            if root.status-text != "" : Rectangle {
+                min-height: root.message == "" ? 35px : 53px;
+                border-radius: 8px;
+                background: root.status-kind == 4 ? Theme.danger-bg : root.status-kind == 3 ? Theme.warn-bg : root.status-kind == 2 ? Theme.accent-soft : Theme.layer2;
+                border-width: 1px;
+                border-color: root.status-kind == 4 ? Theme.danger : root.status-kind == 3 ? Theme.warn-stroke : root.status-kind == 2 ? Theme.accent-soft-stroke : Theme.stroke;
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    padding-top: 8px;
+                    padding-bottom: 8px;
+                    spacing: 8px;
+                    VerticalLayout {
+                        alignment: start;
+                        Rectangle {
+                            width: 7px;
+                            height: 7px;
+                            border-radius: 4px;
+                            background: root.status-kind == 4 ? Theme.danger : root.status-kind == 3 ? Theme.warn-accent : Theme.accent;
+                        }
+                    }
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 2px;
+                        Text {
+                            text: root.status-text;
+                            color: root.status-kind == 4 ? Theme.danger-text : root.status-kind == 3 ? Theme.warn-text : Theme.text2;
+                            font-size: 11.5px;
+                            font-weight: 650;
+                            wrap: word-wrap;
+                        }
+                        if root.message != "" : Text {
+                            text: root.message;
+                            color: root.status-kind == 4 ? Theme.danger-text : root.status-kind == 3 ? Theme.warn-text : Theme.text3;
+                            font-size: 10.5px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+
+            if !root.ready : PrimaryButton {
+                label: "Set up this monitor";
+                clicked => { root.open-setup(); }
+            }
+
+            if root.ready && root.active-source >= 0 : PrimaryButton {
+                label: root.switching
+                    ? (root.pending-source == 0 ? "Switching to " + root.source-a-label + "…" : "Switching to " + root.source-b-label + "…")
+                    : "Switch to " + root.target-label;
+                enabled: !root.switching;
+                clicked => { root.toggle(); }
+            }
+
+            if root.ready && root.active-source < 0 : VerticalLayout {
+                spacing: 7px;
+                Text {
+                    text: "CHOOSE A DESTINATION";
+                    color: Theme.text3;
+                    font-size: 10px;
+                    font-weight: 750;
+                    letter-spacing: 0.45px;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    ChoiceButton {
+                        horizontal-stretch: 1;
+                        label: root.source-a-label;
+                        detail: root.source-a-detail;
+                        enabled: !root.switching && root.sources.length > 0 && root.sources[0].configured;
+                        clicked => { root.switch-source(0); }
+                    }
+                    ChoiceButton {
+                        horizontal-stretch: 1;
+                        label: root.source-b-label;
+                        detail: root.source-b-detail;
+                        enabled: !root.switching && root.sources.length > 1 && root.sources[1].configured;
+                        clicked => { root.switch-source(1); }
+                    }
+                }
+            }
+
+            Rectangle { vertical-stretch: 1; }
         }
 
         Rectangle { height: 1px; background: Theme.stroke; }
 
-        // ---------------- presets ----------------
-        if presets.length == 0 : HorizontalLayout {
-            padding-left: 12px;
-            padding-right: 12px;
-            padding-top: 11px;
-            padding-bottom: 13px;
-            spacing: 7px;
-            alignment: start;
-            Text { text: "PRESETS"; color: Theme.text3; font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; vertical-alignment: center; }
-            Text { text: "Not configured"; color: Theme.text3; font-size: 11.5px; vertical-alignment: center; }
-        }
-        if presets.length > 0 : HorizontalLayout {
-            padding-left: 12px;
-            padding-right: 12px;
-            padding-top: 11px;
-            padding-bottom: 13px;
-            spacing: 7px;
-            alignment: start;
-            Text { text: "PRESETS"; color: Theme.text3; font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px; vertical-alignment: center; }
-            for p[pi] in presets: Rectangle {
-                property <bool> selected: root.selected-preset >= 0 ? pi == root.selected-preset : p.active;
-                height: 28px;
-                width: ptxt.preferred-width + 20px;
-                border-radius: 8px;
-                background: selected ? Theme.accent-soft : Theme.layer;
-                border-width: 1px;
-                border-color: selected ? Theme.accent-soft-stroke : Theme.ctl-stroke;
-                opacity: root.presets-enabled && !root.controls-disabled ? 1 : 0.5;
-                TouchArea {
-                    enabled: root.presets-enabled && !root.controls-disabled;
-                    clicked => { root.selected-preset = pi; root.apply-preset(pi); }
-                }
-                ptxt := Text {
-                    text: p.name;
-                    color: selected ? Theme.accent-text : Theme.text;
-                    font-size: 12.5px;
-                    font-weight: 600;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+        HorizontalLayout {
+            padding-left: 15px;
+            padding-right: 15px;
+            padding-top: 10px;
+            padding-bottom: 10px;
+            Text {
+                text: root.ready ? "One monitor · two local inputs" : "Setup is required before switching";
+                color: Theme.text3;
+                font-size: 10.5px;
+                vertical-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Text {
+                text: "Settings";
+                color: footer-hit.has-hover ? Theme.accent-text : Theme.text2;
+                font-size: 11.5px;
+                font-weight: 650;
+                vertical-alignment: center;
+                footer-hit := TouchArea { clicked => { root.open-settings(); } }
             }
         }
     }

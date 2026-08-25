@@ -2,7 +2,7 @@
 ;
 ; Admin-free by design: installs per-user to %LOCALAPPDATA%\Programs\screen-hop and registers
 ; autostart via the per-user HKCU\...\Run key (no UAC, no Scheduled Task elevation). Build with:
-;   cargo build --release -p screenhop-ui -p screenhop-spike
+;   cargo build --release -p screenhop-ui
 ;   "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\screen-hop.iss
 ; Output: installer\dist\screen-hop-setup.exe
 ;
@@ -34,11 +34,9 @@ UninstallDisplayIcon={app}\screenhop-ui.exe
 
 [Files]
 Source: "..\target\release\screenhop-ui.exe"; DestDir: "{app}"; Flags: ignoreversion
-; The hardware spike is handy for calibration/troubleshooting; include it if it was built.
-Source: "..\target\release\screenhop-spike.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
-Name: "{group}\screen-hop"; Filename: "{app}\screenhop-ui.exe"; Parameters: "--live"
+Name: "{group}\screen-hop"; Filename: "{app}\screenhop-ui.exe"
 Name: "{group}\Uninstall screen-hop"; Filename: "{uninstallexe}"
 
 [Tasks]
@@ -47,12 +45,12 @@ Name: "autostart"; Description: "Start screen-hop automatically when I sign in";
 [Registry]
 ; Per-user autostart (no admin). Removed automatically on uninstall.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; \
-    ValueName: "screen-hop"; ValueData: """{app}\screenhop-ui.exe"" --live"; \
+    ValueName: "screen-hop"; ValueData: """{app}\screenhop-ui.exe"""; \
     Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
-Filename: "{app}\screenhop-ui.exe"; Parameters: "--live"; \
+Filename: "{app}\screenhop-ui.exe"; \
     Description: "Launch screen-hop now"; Flags: nowait postinstall skipifsilent
 
-; Note: user config (calibration, pins, mesh secret) lives in the app's config dir and is
-; intentionally NOT removed on uninstall, so a reinstall keeps your pairing/calibration.
+; Note: the selected monitor and two locally captured source values live in the app's config dir.
+; They are intentionally NOT removed on uninstall, so a reinstall keeps local setup.

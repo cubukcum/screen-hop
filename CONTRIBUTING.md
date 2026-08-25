@@ -1,15 +1,16 @@
 # Contributing to screen-hop
 
-Thanks for helping! screen-hop is a cross-platform (Rust + Slint) tool for reassigning physical
-monitors between PCs over the LAN via DDC/CI. Please read [README.md](README.md) and the product
-definition in [docs/PLAN-screen-hop.md](docs/PLAN-screen-hop.md) first.
+Thanks for helping! screen-hop is a cross-platform Rust + Slint utility that lets one PC switch one
+selected monitor between two locally confirmed inputs through DDC/CI. Please read
+[README.md](README.md) and the product definition in
+[docs/PLAN-screen-hop.md](docs/PLAN-screen-hop.md) first.
 
 ## Ground rules
 
 screen-hop is **deliberately honest about hardware limits** (see the README "Honest boundaries").
 Contributions must keep that posture: never fake a switch, never paper over a per-monitor failure,
-and never weaken the soft-brick guard (D7 — only a peer's own self-calibrated value is ever
-written; a quirk can *restrict* but never *authorize* a write).
+and never weaken the soft-brick guard: only the two values observed for the selected monitor may
+be written, and a quirk can *restrict* but never *authorize* a write.
 
 ## Prerequisites
 
@@ -46,21 +47,19 @@ cargo run -p screenhop-spike -- list    # just enumerate panels
 |---|---|
 | `screenhop-core` | domain types, `MonitorDriver`/`Delayer`/`Clock` traits, actuation state machine + soft-brick guard |
 | `screenhop-ddc` | `ddc-hi`-backed `MonitorDriver` (Windows/Linux/macOS) |
-| `screenhop-identity` | EDID fingerprint, collision/labeling, per-`(peer,monitor)` calibration |
-| `screenhop-net` | AEAD transport, Ed25519 handshake + TOFU pinning, wire schema |
-| `screenhop-state` | per-monitor lease lock, last-writer-wins ownership map |
+| `screenhop-identity` | EDID fingerprint and local monitor collision/labeling helpers |
 | `screenhop-quirks` | panel-global quirks DB (merge precedence user > local > shipped) |
-| `screenhop-app` | mesh node + orchestration (discovery, routing, presets, reconcile, partition guard) |
-| `screenhop-ui` | Slint tray UI surfaces + the backend-facing controller |
-| `screenhop-spike` | M0 hardware feasibility spike |
+| `screenhop-app` | two-source local configuration, persistence, and guarded switch selection |
+| `screenhop-ui` | Slint local switch/setup surfaces and the dedicated DDC worker |
+| `screenhop-spike` | opt-in real-hardware compatibility and round-trip checks |
 
 ## Tests
 
 - Pure-logic crates are unit-tested on every platform; prefer adding a focused test with each change.
 - Invariants that must hold across arbitrary inputs (e.g. the soft-brick guard) use **property
   tests** (`proptest`) — see `screenhop-core/src/executor.rs`.
-- Behaviour that needs real hardware (a live DDC switch, mDNS on a real LAN, soak numbers) is
-  **manual / opt-in** — document the steps rather than faking them in CI (CI has no DDC hardware).
+- Behaviour that needs real hardware (especially the one-PC `A -> B -> A` round trip) is
+  **manual / opt-in** — document the steps rather than faking it in CI (CI has no DDC hardware).
 
 ## Pull requests
 

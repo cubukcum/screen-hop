@@ -1,5 +1,9 @@
 # M0 — Pull-to-self hardware verdicts
 
+> Historical multi-agent evidence. The local two-input product now requires a different gate: the
+> **same controlling PC** must complete `A -> B -> A`. A two-agent pull-to-self pass does not prove
+> that sequence; use the spike's guided local round-trip test.
+
 This is the **formal record** for screen-hop's M0 go/no-go gate. The architecture commits to
 **pull-to-self** as the primary switching direction (PLAN §6.2); M0 exists to confirm that bet on
 real hardware *before* the rest of the system depends on it.

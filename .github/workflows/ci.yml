@@ -34,9 +34,8 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
-  # The installer is the ONE user-facing download (it bundles screenhop-ui.exe and the spike
-  # tool inside). We deliberately don't publish loose .exes — three unlabeled binaries on a
-  # release page confused testers about which one to run.
+  # The installer is the one user-facing download and contains only the local desktop app. The
+  # opt-in hardware spike remains a developer tool and is not packaged for end users.
   installer:
     name: installer (windows)
     runs-on: windows-latest
@@ -46,7 +45,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Release build
-        run: cargo build --release -p screenhop-ui -p screenhop-spike
+        run: cargo build --release -p screenhop-ui
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
       - name: Build installer

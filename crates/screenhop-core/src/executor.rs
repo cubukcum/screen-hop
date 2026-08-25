@@ -5,20 +5,19 @@ use crate::types::{ActuationPolicy, DdcWriteResult, SwitchOutcome, SwitchRequest
 pub const VCP_INPUT_SELECT: u8 = 0x60;
 
 /// Executes a single, already-resolved [`SwitchRequest`] against a [`MonitorDriver`],
-/// implementing the actuation state machine from docs/PLAN-screen-hop.md §6.1:
+/// implementing the guarded local actuation state machine:
 ///
 /// ```text
 /// capability gate -> soft-brick guards -> write -> settle -> verify -> retry/commit/fail
 /// ```
 ///
-/// Direction selection and value resolution happen upstream (orchestrator, M4); this
-/// type owns the defensive write/verify loop and the soft-brick guarantees.
+/// Source-slot resolution happens upstream; this type owns the defensive write/verify loop and
+/// the soft-brick guarantees.
 ///
 /// The loop is bounded by both `policy.max_attempts` AND a wall-clock hard ceiling
-/// (`policy.ceiling_ms`, D5/§6.3) measured against the injected [`Clock`], so a switch provably
-/// terminates before the lease TTL. Note: the ceiling bounds time *between* driver calls; a driver
-/// whose individual `write_input`/`try_read_input` can block (e.g. a DisplayPort push-release hang)
-/// must additionally carry its own per-call timeout — the ceiling cannot interrupt a blocked syscall.
+/// (`policy.ceiling_ms`) measured against the injected [`Clock`]. Note: the ceiling bounds time
+/// *between* driver calls; a driver whose individual `write_input`/`try_read_input` can block must
+/// additionally carry its own per-call timeout — the ceiling cannot interrupt a blocked syscall.
 pub struct SwitchExecutor<D: MonitorDriver, L: Delayer, C: Clock> {
     driver: D,
     delayer: L,
@@ -48,7 +47,7 @@ impl<D: MonitorDriver, L: Delayer, C: Clock> SwitchExecutor<D, L, C> {
             );
         }
 
-        // 2. Soft-brick guards (D7): never write a blocked or non-self-confirmed value.
+        // 2. Soft-brick guards: never write a blocked or non-locally-confirmed value.
         if policy.blocked_values.contains(&request.input_value) {
             return refusal(
                 SwitchOutcome::BlockedValue,
@@ -62,14 +61,14 @@ impl<D: MonitorDriver, L: Delayer, C: Clock> SwitchExecutor<D, L, C> {
             return refusal(
                 SwitchOutcome::NeedsCalibration,
                 &format!(
-                    "Input 0x{:02X} is not self-confirmed for this peer+monitor.",
+                    "Input 0x{:02X} is not confirmed for the selected monitor.",
                     request.input_value
                 ),
             );
         }
 
         // 3. Write / settle / verify with retries, bounded by both attempt count and the
-        //    per-monitor hard ceiling (D5/§6.3).
+        //    per-monitor hard ceiling.
         let started_ms = self.clock.now_ms();
         let deadline_ms = started_ms.saturating_add(u64::from(policy.ceiling_ms));
         let mut attempts = 0u32;
@@ -301,10 +300,8 @@ mod tests {
         SwitchRequest {
             monitor_id: MON.to_string(),
             input_value: TARGET,
-            direction: SwitchDirection::PullToSelf,
         }
     }
-    use crate::types::SwitchDirection;
 
     fn exec(fake: Fake) -> SwitchExecutor<Fake, NoDelay, ZeroClock> {
         SwitchExecutor::new(fake, NoDelay, ZeroClock)
@@ -428,7 +425,7 @@ mod tests {
     }
 
     proptest! {
-        /// D7 soft-brick invariant (PLAN §6.1, DoD line 519): across arbitrary policies and driver
+        /// Soft-brick invariant: across arbitrary policies and driver
         /// behaviour, the executor must NEVER issue a 0x60 write whose value is blocked or not
         /// self-confirmed. Rather than restate the two hardcoded refusal cases, this records EVERY
         /// value the driver was actually asked to write and asserts each satisfies the invariant —
@@ -469,7 +466,6 @@ mod tests {
             let request = SwitchRequest {
                 monitor_id: MON.to_string(),
                 input_value: target,
-                direction: SwitchDirection::PullToSelf,
             };
 
             let mut e = exec(fake);
