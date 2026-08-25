@@ -11,7 +11,7 @@
 ; installer\README.md.
 
 #define AppName "screen-hop"
-#define AppVersion "0.2.0"
+#define AppVersion "0.3.0"
 
 [Setup]
 AppId={{7F3A9C2E-1B4D-4E8A-9C5F-2D6E8A1B3C4D}

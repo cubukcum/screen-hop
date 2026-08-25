@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — local two-input reset
+## v0.3.0-alpha — local two-input reset (pre-release)
 
 ### Changed
 
@@ -28,6 +28,13 @@
 - Hardware addressing uses the backend's unique local handle rather than collapsing identical
   displays onto a fingerprint; model-wide quirks are applied separately.
 - Invalid local/user quirk files disable writes instead of silently dropping safety restrictions.
+
+### Verification
+
+- 64 automated tests pass across the workspace; formatting, strict Clippy, and all-target builds
+  are clean.
+- The guarded one-PC round trip still depends on the monitor accepting DDC/CI commands while its
+  other input is visible, so each setup must complete the guided hardware compatibility test.
 
 ## v0.2.0-alpha — safer live controls and multi-peer resilience (pre-release)
 
