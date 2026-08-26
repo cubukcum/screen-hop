@@ -80,7 +80,7 @@ jobs:
       contents: write
     steps:
       - name: Check out release tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Download installer artifact
@@ -94,13 +94,28 @@ jobs:
       - name: Publish GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "$GITHUB_REF_NAME"
-          release-assets/screen-hop-setup.exe
-          release-assets/SHA256SUMS-installer.txt
-          --repo "$GITHUB_REPOSITORY"
-          --title "screen-hop $GITHUB_REF_NAME"
-          --notes-from-tag
-          --prerelease
-          --latest=false
-          --verify-tag
+        run: |
+          set +e
+          release_output="$(
+            gh release create "$GITHUB_REF_NAME" \
+              release-assets/screen-hop-setup.exe \
+              release-assets/SHA256SUMS-installer.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "screen-hop $GITHUB_REF_NAME" \
+              --notes-from-tag \
+              --prerelease \
+              --latest=false \
+              --verify-tag 2>&1
+          )"
+          release_status=$?
+          set -e
+
+          if [ "$release_status" -ne 0 ]; then
+            escaped_output="${release_output//'%'/'%25'}"
+            escaped_output="${escaped_output//$'\r'/'%0D'}"
+            escaped_output="${escaped_output//$'\n'/'%0A'}"
+            echo "::error title=GitHub prerelease publication failed::$escaped_output"
+            exit "$release_status"
+          fi
+
+          printf '%s\n' "$release_output"
