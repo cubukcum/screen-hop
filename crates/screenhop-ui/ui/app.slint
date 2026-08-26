@@ -33,7 +33,7 @@ export component AppWindow inherits Window {
 
     // Setup view model. Rust advances the step only after each physical/DDC operation succeeds.
     in-out property <[DetectedMonitor]> detected-monitors: [
-        { name: "Studio monitor", detail: "AOC Q27G3XMN · DISPLAY\\AOC1234" },
+        { name: "Studio monitor", detail: "Best identified · NVIDIA DDC path", recommended: true },
     ];
     in-out property <int> selected-monitor: 0;
     in-out property <int> setup-step: 1; // 1 select · 2 capture A · 3 capture/test B · 4 name

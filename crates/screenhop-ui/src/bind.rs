@@ -57,12 +57,14 @@ pub fn resolve_source(config: &LocalConfig, index: i32) -> Option<SourceSlot> {
     Some(slot)
 }
 
-/// Build setup rows from `(friendly name, diagnostic detail)` pairs returned by monitor probing.
-pub fn build_detected_monitors(rows: &[(String, String)]) -> Vec<DetectedMonitor> {
+/// Build setup rows from `(friendly name, diagnostic detail, recommendation)` values returned by
+/// monitor probing.
+pub fn build_detected_monitors(rows: &[(String, String, bool)]) -> Vec<DetectedMonitor> {
     rows.iter()
-        .map(|(name, detail)| DetectedMonitor {
+        .map(|(name, detail, recommended)| DetectedMonitor {
             name: name.as_str().into(),
             detail: detail.as_str().into(),
+            recommended: *recommended,
         })
         .collect()
 }
@@ -112,9 +114,11 @@ mod tests {
         let rows = build_detected_monitors(&[(
             "Studio monitor".to_owned(),
             "AOC Q27G3XMN · DISPLAY\\AOC1234".to_owned(),
+            true,
         )]);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].name.as_str(), "Studio monitor");
         assert!(rows[0].detail.as_str().contains("DISPLAY"));
+        assert!(rows[0].recommended);
     }
 }

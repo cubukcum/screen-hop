@@ -1,9 +1,11 @@
 import { Theme } from "theme.slint";
 import { StrokeIcon } from "icons.slint";
+import { ScrollView } from "std-widgets.slint";
 
 export struct DetectedMonitor {
     name: string,
     detail: string,
+    recommended: bool,
 }
 
 global SetupGlyph {
@@ -93,6 +95,8 @@ component StepBadge inherits Rectangle {
 component MonitorOption inherits Rectangle {
     in property <string> name;
     in property <string> detail;
+    in property <int> display-number;
+    in property <bool> recommended;
     in property <bool> selected;
     callback clicked;
 
@@ -127,8 +131,20 @@ component MonitorOption inherits Rectangle {
             horizontal-stretch: 1;
             alignment: center;
             spacing: 2px;
-            Text { text: root.name; color: Theme.text; font-size: 13px; font-weight: 650; overflow: elide; }
-            Text { text: root.detail; color: Theme.text3; font-size: 10.5px; overflow: elide; }
+            Text {
+                text: "Option \{root.display-number} · \{root.name}";
+                color: Theme.text;
+                font-size: 13px;
+                font-weight: 650;
+                overflow: elide;
+            }
+            Text {
+                text: root.detail;
+                color: root.recommended ? Theme.accent-text : Theme.text3;
+                font-size: 10.5px;
+                font-weight: root.recommended ? 650 : 500;
+                overflow: elide;
+            }
         }
         VerticalLayout {
             alignment: center;
@@ -209,6 +225,28 @@ component NameField inherits VerticalLayout {
     }
 }
 
+component SetupMessageCard inherits Rectangle {
+    in property <string> message;
+
+    height: max(42px, message-text.preferred-height + 20px);
+    border-radius: 8px;
+    background: Theme.warn-bg;
+    border-width: 1px;
+    border-color: Theme.warn-stroke;
+    HorizontalLayout {
+        padding: 10px;
+        spacing: 8px;
+        StrokeIcon { width: 15px; height: 15px; tint: Theme.warn-accent; commands: SetupGlyph.alert; }
+        message-text := Text {
+            horizontal-stretch: 1;
+            text: root.message;
+            color: Theme.warn-text;
+            font-size: 11px;
+            wrap: word-wrap;
+        }
+    }
+}
+
 // Four-step local calibration. Step 3 deliberately says what the app is doing: it waits for a
 // physical change, captures B, then attempts to return to A automatically before setup can finish.
 export component SetupWizard inherits Rectangle {
@@ -225,6 +263,10 @@ export component SetupWizard inherits Rectangle {
     callback listen-b();
     callback finish();
     callback cancel();
+
+    // A long monitor list can be scrolled. Every new step must begin at its heading rather than
+    // inheriting that offset from the shared scrolling body.
+    changed step => { body-scroll.viewport-y = 0px; }
 
     property <string> selected-name: selected-monitor >= 0 && selected-monitor < detected-monitors.length
         ? detected-monitors[selected-monitor].name
@@ -272,17 +314,37 @@ export component SetupWizard inherits Rectangle {
 
         Rectangle { height: 1px; background: Theme.stroke; }
 
-        VerticalLayout {
-            padding-left: 20px;
-            padding-right: 20px;
-            padding-top: 16px;
-            padding-bottom: 12px;
-            spacing: 10px;
+        body-scroll := ScrollView {
+            horizontal-stretch: 1;
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                width: parent.width;
+                alignment: start;
+                padding-left: 20px;
+                padding-right: 20px;
+                padding-top: 16px;
+                padding-bottom: 12px;
+                spacing: 10px;
 
             if root.step == 1 : VerticalLayout {
+                alignment: start;
                 spacing: 9px;
                 Text { text: "Choose the monitor to control"; color: Theme.text; font-size: 17px; font-weight: 650; }
-                Text { text: "Displays exposed through the local DDC layer are listed. The next step verifies that the selected handle can read its input."; color: Theme.text2; font-size: 11.5px; wrap: word-wrap; }
+                Text {
+                    text: "Choose the physical screen whose Input / Source button you use to switch between devices. If one row shows its brand and model, try that one first.";
+                    color: Theme.text2;
+                    font-size: 11.5px;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: "Selecting it and pressing Continue does not change the input; the next step only reads it.";
+                    color: Theme.accent-text;
+                    font-size: 11px;
+                    font-weight: 600;
+                    wrap: word-wrap;
+                }
+                if root.message != "" : SetupMessageCard { message: root.message; }
                 Rectangle { height: 3px; }
                 if root.detected-monitors.length == 0 : Rectangle {
                     height: 82px;
@@ -300,12 +362,15 @@ export component SetupWizard inherits Rectangle {
                 for monitor[index] in root.detected-monitors : MonitorOption {
                     name: monitor.name;
                     detail: monitor.detail;
+                    display-number: index + 1;
+                    recommended: monitor.recommended;
                     selected: root.selected-monitor == index;
                     clicked => { root.selected-monitor = index; }
                 }
             }
 
             if root.step == 2 : VerticalLayout {
+                alignment: start;
                 spacing: 11px;
                 Text { text: "Capture source A"; color: Theme.text; font-size: 17px; font-weight: 650; }
                 Text { text: "This records the input that is visible right now. It does not switch anything yet."; color: Theme.text2; font-size: 11.5px; wrap: word-wrap; }
@@ -325,6 +390,7 @@ export component SetupWizard inherits Rectangle {
             }
 
             if root.step == 3 : VerticalLayout {
+                alignment: start;
                 spacing: 11px;
                 Text { text: "Teach source B and verify the return path"; color: Theme.text; font-size: 17px; font-weight: 650; }
                 Text { text: "The app must prove that this PC can switch the monitor back after the other input becomes active."; color: Theme.text2; font-size: 11.5px; wrap: word-wrap; }
@@ -344,6 +410,7 @@ export component SetupWizard inherits Rectangle {
             }
 
             if root.step == 4 : VerticalLayout {
+                alignment: start;
                 spacing: 11px;
                 Text { text: "Name the two sources"; color: Theme.text; font-size: 17px; font-weight: 650; }
                 Text { text: "Use labels you will recognize in the tray. You can change them by rerunning setup."; color: Theme.text2; font-size: 11.5px; wrap: word-wrap; }
@@ -368,21 +435,9 @@ export component SetupWizard inherits Rectangle {
                 }
             }
 
-            if root.message != "" : Rectangle {
-                min-height: 42px;
-                border-radius: 8px;
-                background: Theme.warn-bg;
-                border-width: 1px;
-                border-color: Theme.warn-stroke;
-                HorizontalLayout {
-                    padding: 10px;
-                    spacing: 8px;
-                    StrokeIcon { width: 15px; height: 15px; tint: Theme.warn-accent; commands: SetupGlyph.alert; }
-                    Text { text: root.message; color: Theme.warn-text; font-size: 11px; wrap: word-wrap; }
-                }
-            }
+            if root.step != 1 && root.message != "" : SetupMessageCard { message: root.message; }
 
-            Rectangle { vertical-stretch: 1; }
+            }
         }
 
         Rectangle { height: 1px; background: Theme.stroke; }

@@ -1,9 +1,10 @@
 //! Versioned, local-only configuration and crash-safe persistence.
 //!
 //! A missing config file means "not configured yet" and loads [`LocalConfig::default`]. An
-//! existing file is treated more strictly: all schema fields must be present, the schema version
-//! must be supported, and the two confirmed input values must be distinct. This keeps switching
-//! fail-closed when a file is truncated, hand-edited incorrectly, or belongs to another version.
+//! existing local-only file is treated more strictly: all schema fields must be present, the
+//! schema version must be supported, and the two confirmed input values must be distinct. A
+//! recognized retired LAN config loads as an unconfigured default without importing any of its
+//! values. This keeps switching fail-closed while allowing upgrades to enter setup cleanly.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -15,6 +16,27 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 pub const CONFIG_FILE: &str = "config.json";
 pub const LOCAL_CONFIG_VERSION: u32 = 2;
+
+/// The unversioned config shape written by the retired LAN product.
+///
+/// Values are intentionally discarded: aliases had different semantics in that product, and its
+/// peer settings cannot prove a safe local A/B setup. Keeping this exact deserializer lets us
+/// distinguish a normal upgrade from corrupt or unknown configuration without weakening the
+/// current schema.
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct RetiredLanConfig {
+    #[serde(rename = "port")]
+    _port: u16,
+    #[serde(rename = "name")]
+    _name: String,
+    #[serde(rename = "can_actuate")]
+    _can_actuate: bool,
+    #[serde(rename = "manual_hosts")]
+    _manual_hosts: Vec<String>,
+    #[serde(rename = "monitor_aliases")]
+    _monitor_aliases: HashMap<String, String>,
+}
 
 /// One of the two locally configured monitor inputs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -341,6 +363,23 @@ pub fn save_config(dir: &Path, config: &LocalConfig) -> io::Result<()> {
     atomic_write(&dir.join(CONFIG_FILE), &bytes)
 }
 
+fn is_retired_lan_config(bytes: &[u8]) -> bool {
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(bytes) else {
+        return false;
+    };
+    let Some(fields) = value.as_object() else {
+        return false;
+    };
+
+    // An empty object is not enough evidence of a prior installation, while `version` always
+    // belongs to the current/future local schema and must retain its strict error handling.
+    !fields.is_empty()
+        && !fields.contains_key("version")
+        // Deserialize the original bytes so serde can reject duplicate fields. A Value round-trip
+        // would collapse duplicates and could otherwise hide an invalid earlier occurrence.
+        && serde_json::from_slice::<RetiredLanConfig>(bytes).is_ok()
+}
+
 pub fn load_config(dir: &Path) -> io::Result<LocalConfig> {
     let path = dir.join(CONFIG_FILE);
     let bytes = match fs::read(path) {
@@ -349,8 +388,11 @@ pub fn load_config(dir: &Path) -> io::Result<LocalConfig> {
         Err(error) => return Err(error),
     };
 
-    let config: LocalConfig = serde_json::from_slice(&bytes)
-        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    let config: LocalConfig = match serde_json::from_slice(&bytes) {
+        Ok(config) => config,
+        Err(_) if is_retired_lan_config(&bytes) => return Ok(LocalConfig::default()),
+        Err(error) => return Err(io::Error::new(io::ErrorKind::InvalidData, error)),
+    };
     config
         .validate()
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
@@ -398,6 +440,67 @@ mod tests {
                 "incomplete config unexpectedly loaded: {json}"
             );
         }
+    }
+
+    #[test]
+    fn retired_lan_config_opens_as_unconfigured_and_is_not_rewritten() {
+        for json in [
+            r#"{
+                "port": 9000,
+                "name": "Desk",
+                "can_actuate": true,
+                "manual_hosts": ["10.0.0.5:7777"],
+                "monitor_aliases": {"old-handle": "old-shared-id"}
+            }"#,
+            r#"{"manual_hosts":["10.0.0.5:7777"]}"#,
+            r#"{"monitor_aliases":{"old-handle":"old-shared-id"}}"#,
+        ] {
+            let dir = temp_dir();
+            let path = dir.join(CONFIG_FILE);
+            fs::write(&path, json).unwrap();
+
+            assert_eq!(load_config(&dir).unwrap(), LocalConfig::default());
+            assert_eq!(fs::read_to_string(path).unwrap(), json);
+        }
+    }
+
+    #[test]
+    fn current_or_unrecognized_invalid_config_still_fails_closed() {
+        for json in [
+            r#"{
+                "version": 2,
+                "selected_monitor": null,
+                "selected_monitor_model_token": null,
+                "sources": [
+                    {"label":"A","confirmed_value":null},
+                    {"label":"B","confirmed_value":null}
+                ],
+                "monitor_aliases": {},
+                "last_requested": null,
+                "manual_hosts": []
+            }"#,
+            r#"{"manual_hosts":"not-an-array"}"#,
+            r#"{"unknown_retired_setting":true}"#,
+        ] {
+            let dir = temp_dir();
+            fs::write(dir.join(CONFIG_FILE), json).unwrap();
+
+            let error = load_config(&dir).expect_err("invalid config must not be trusted");
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        }
+    }
+
+    #[test]
+    fn duplicate_legacy_fields_are_rejected_before_their_values_can_collapse() {
+        let dir = temp_dir();
+        fs::write(
+            dir.join(CONFIG_FILE),
+            r#"{"manual_hosts":"not-an-array","manual_hosts":[]}"#,
+        )
+        .unwrap();
+
+        let error = load_config(&dir).expect_err("duplicate fields must remain invalid");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     }
 
     #[test]

@@ -3,6 +3,7 @@
 #![windows_subsystem = "windows"]
 
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::mpsc;
@@ -13,7 +14,7 @@ use screenhop_app::{
     LocalSwitcher, SourceSlot, SourceState,
 };
 use screenhop_core::{MonitorDriver, RealClock, RealDelayer, SwitchExecutor, SwitchOutcome};
-use screenhop_ddc::DdcHiDriver;
+use screenhop_ddc::{DdcHiDriver, MonitorInfo};
 use screenhop_quirks::QuirksDb;
 use screenhop_ui::{bind, AppWindow, Controller};
 use slint::{ComponentHandle, ModelRc, Timer, TimerMode, VecModel};
@@ -71,6 +72,7 @@ struct MonitorDescriptor {
     id: String,
     name: String,
     detail: String,
+    recommended: bool,
     model_token: Option<String>,
 }
 
@@ -196,16 +198,22 @@ fn run_local(force_setup: bool) -> Result<(), slint::PlatformError> {
     .collect::<Vec<_>>()
     .join(" ");
     let startup_message = (!startup_message.is_empty()).then_some(startup_message);
-    let detected_rows: Vec<(String, String)> = monitors
+    let detected_rows: Vec<(String, String, bool)> = monitors
         .iter()
-        .map(|monitor| (monitor.name.clone(), monitor.detail.clone()))
+        .map(|monitor| {
+            (
+                monitor.name.clone(),
+                monitor.detail.clone(),
+                monitor.recommended,
+            )
+        })
         .collect();
     app.set_detected_monitors(ModelRc::from(Rc::new(VecModel::from(
         bind::build_detected_monitors(&detected_rows),
     ))));
 
     let selected_index = selected_position.map_or_else(
-        || if monitors.is_empty() { -1 } else { 0 },
+        || default_setup_monitor_index(&monitors),
         |index| index as i32,
     );
     app.set_selected_monitor(selected_index);
@@ -656,7 +664,7 @@ fn open_setup(app: &AppWindow, ui: &mut UiState, message: Option<&str>) {
         .as_deref()
         .and_then(|id| ui.monitors.iter().position(|monitor| monitor.id == id))
         .map_or_else(
-            || if ui.monitors.is_empty() { -1 } else { 0 },
+            || default_setup_monitor_index(&ui.monitors),
             |index| index as i32,
         );
     app.set_selected_monitor(selected);
@@ -950,31 +958,126 @@ fn toggle_request(config: &LocalConfig, state: SourceState) -> Option<(SourceSlo
 }
 
 fn monitor_descriptors(driver: &DdcHiDriver) -> Vec<MonitorDescriptor> {
-    driver
-        .monitors()
+    build_monitor_descriptors(driver.monitors())
+}
+
+fn build_monitor_descriptors(monitors: Vec<MonitorInfo>) -> Vec<MonitorDescriptor> {
+    let mut seen_ids = HashSet::new();
+    let monitors = monitors
         .into_iter()
-        .map(|monitor| {
-            let manufacturer = monitor.manufacturer.as_deref().unwrap_or("").trim();
-            let model = monitor.model.as_deref().unwrap_or("Monitor").trim();
-            let name = format!("{manufacturer} {model}").trim().to_owned();
-            let name = if name.is_empty() {
-                "Monitor".to_owned()
+        // `DdcHiDriver::index_of` addresses a monitor by the first exact id match. Showing a
+        // later duplicate would therefore offer a row that cannot actually be selected.
+        .filter(|monitor| seen_ids.insert(monitor.id.clone()))
+        .collect::<Vec<_>>();
+    let recognized = monitors
+        .iter()
+        .enumerate()
+        .filter_map(|(index, monitor)| recognized_monitor(monitor).then_some(index))
+        .collect::<Vec<_>>();
+    let recommended_index = if recognized.len() == 1 {
+        recognized.first().copied()
+    } else {
+        None
+    };
+
+    monitors
+        .into_iter()
+        .enumerate()
+        .map(|(index, monitor)| {
+            let recommended = recommended_index == Some(index);
+            let name = friendly_monitor_name(&monitor);
+            let identity = if recommended {
+                "Best identified match"
+            } else if recognized_monitor(&monitor) {
+                "Model identified"
             } else {
-                name
+                "Name unavailable"
             };
-            let fingerprint = monitor
-                .monitor_id()
-                .map(|id| format!(" · fingerprint {id}"))
-                .unwrap_or_default();
             let model_token = monitor.model_token();
             MonitorDescriptor {
                 id: monitor.id.clone(),
                 name,
-                detail: format!("{} · {}{fingerprint}", monitor.backend, monitor.id),
+                detail: format!(
+                    "{identity} · {} · {}",
+                    friendly_backend_name(&monitor.backend),
+                    monitor.id
+                ),
+                recommended,
                 model_token,
             }
         })
         .collect()
+}
+
+fn default_setup_monitor_index(monitors: &[MonitorDescriptor]) -> i32 {
+    match monitors {
+        [] => -1,
+        [_] => 0,
+        _ => monitors
+            .iter()
+            .position(|monitor| monitor.recommended)
+            .map_or(-1, |index| index as i32),
+    }
+}
+
+fn friendly_monitor_name(monitor: &MonitorInfo) -> String {
+    let manufacturer = monitor
+        .manufacturer
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !generic_monitor_label(value));
+    let model = monitor
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !generic_monitor_label(value));
+
+    match (manufacturer, model) {
+        (Some(manufacturer), Some(model))
+            if model
+                .to_ascii_lowercase()
+                .starts_with(&manufacturer.to_ascii_lowercase()) =>
+        {
+            model.to_owned()
+        }
+        (Some(manufacturer), Some(model)) => format!("{manufacturer} {model}"),
+        (Some(manufacturer), None) => format!("{manufacturer} monitor"),
+        (None, Some(model)) => model.to_owned(),
+        (None, None) => "Unknown monitor".to_owned(),
+    }
+}
+
+fn recognized_monitor(monitor: &MonitorInfo) -> bool {
+    monitor
+        .model
+        .as_deref()
+        .is_some_and(|value| !generic_monitor_label(value))
+}
+
+fn generic_monitor_label(value: &str) -> bool {
+    let value = value.trim().to_ascii_lowercase();
+    value.is_empty()
+        || value == "monitor"
+        || value == "display"
+        || value.contains("generic pnp")
+        || value.contains("generic monitor")
+        || value.contains("default monitor")
+        || value.contains("unknown monitor")
+}
+
+fn friendly_backend_name(backend: &str) -> &'static str {
+    let backend = backend.to_ascii_lowercase();
+    if backend.contains("nvapi") {
+        "NVIDIA DDC path"
+    } else if backend.contains("winapi") {
+        "Windows DDC path"
+    } else if backend.contains("i2c") {
+        "Linux DDC path"
+    } else if backend.contains("mac") {
+        "macOS DDC path"
+    } else {
+        "DDC path"
+    }
 }
 
 fn run_monitors() {
@@ -1012,6 +1115,39 @@ fn run_preview(args: &[String]) -> Result<(), slint::PlatformError> {
     }
     if let Some(step) = arg_value(args, "--step").and_then(|value| value.parse::<i32>().ok()) {
         app.set_setup_step(step.clamp(1, 4));
+    }
+    if args
+        .iter()
+        .any(|argument| argument == "--setup-layout-stress")
+    {
+        let rows = vec![
+            (
+                "Unknown monitor".to_owned(),
+                "Name unavailable · Windows DDC path · WinApi:Generic PnP Monitor".to_owned(),
+                false,
+            ),
+            (
+                "AOC 27P2DG5".to_owned(),
+                "Best identified match · NVIDIA DDC path · Nvapi:AD107-A/2147881091:$Video"
+                    .to_owned(),
+                true,
+            ),
+            (
+                "Unknown monitor".to_owned(),
+                "Name unavailable · Windows DDC path · WinApi:Secondary PnP Monitor".to_owned(),
+                false,
+            ),
+        ];
+        app.set_screen(1);
+        app.set_setup_step(1);
+        app.set_detected_monitors(ModelRc::from(Rc::new(VecModel::from(
+            bind::build_detected_monitors(&rows),
+        ))));
+        app.set_selected_monitor(1);
+        app.set_setup_message(
+            "The saved configuration could not be read safely. Complete setup to replace it; no monitor input will be changed on this screen."
+                .into(),
+        );
     }
 
     if let Some(path) = arg_value(args, "--shot") {
@@ -1051,6 +1187,71 @@ fn run_preview(args: &[String]) -> Result<(), slint::PlatformError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn monitor_info(
+        id: &str,
+        manufacturer: Option<&str>,
+        model: Option<&str>,
+        backend: &str,
+    ) -> MonitorInfo {
+        MonitorInfo {
+            id: id.to_owned(),
+            manufacturer: manufacturer.map(str::to_owned),
+            model: model.map(str::to_owned),
+            serial: None,
+            backend: backend.to_owned(),
+            fingerprint: None,
+        }
+    }
+
+    #[test]
+    fn setup_monitor_rows_dedupe_unaddressable_ids_and_prefer_unique_model() {
+        let monitors = build_monitor_descriptors(vec![
+            monitor_info("WinApi:Generic PnP Monitor", None, None, "WinApi"),
+            monitor_info("WinApi:Generic PnP Monitor", None, None, "WinApi"),
+            monitor_info(
+                "Nvapi:AD107-A/2147881091:$Video",
+                Some("AOC"),
+                Some("27P2DG5"),
+                "Nvapi",
+            ),
+        ]);
+
+        assert_eq!(monitors.len(), 2);
+        assert_eq!(monitors[0].name, "Unknown monitor");
+        assert!(!monitors[0].recommended);
+        assert_eq!(monitors[1].name, "AOC 27P2DG5");
+        assert!(monitors[1].recommended);
+        assert!(monitors[1].detail.starts_with("Best identified match"));
+        assert_eq!(default_setup_monitor_index(&monitors), 1);
+    }
+
+    #[test]
+    fn setup_does_not_guess_between_multiple_recognized_models() {
+        let monitors = build_monitor_descriptors(vec![
+            monitor_info("display-1", Some("AOC"), Some("27P2DG5"), "WinApi"),
+            monitor_info("display-2", Some("DEL"), Some("U2720Q"), "WinApi"),
+        ]);
+
+        assert!(monitors.iter().all(|monitor| !monitor.recommended));
+        assert_eq!(default_setup_monitor_index(&monitors), -1);
+        assert_eq!(default_setup_monitor_index(&[]), -1);
+    }
+
+    #[test]
+    fn setup_handles_zero_recognized_models_without_a_recommendation() {
+        let monitors = build_monitor_descriptors(vec![monitor_info(
+            "WinApi:Generic PnP Monitor",
+            None,
+            Some("Generic PnP Monitor"),
+            "WinApi",
+        )]);
+
+        assert_eq!(monitors.len(), 1);
+        assert_eq!(monitors[0].name, "Unknown monitor");
+        assert!(!monitors[0].recommended);
+        assert_eq!(default_setup_monitor_index(&monitors), 0);
+    }
 
     #[test]
     fn toggle_hint_is_safe_for_known_and_unreadable_states() {

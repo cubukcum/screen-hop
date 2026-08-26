@@ -10,6 +10,10 @@
 - Made normal startup open the real local product; design preview is now explicit.
 - Replaced the multi-PC interface with a compact toggle, explicit source selection, and guided
   one-PC round-trip setup.
+- Recognize retired LAN configuration as an upgrade case so first-run local setup opens cleanly
+  without trusting obsolete peer or alias values.
+- Keep setup warnings and actions visible with a scrollable wizard body, identify the sole named
+  monitor as the best match, and hide duplicate handles that cannot be addressed independently.
 
 ### Removed
 
@@ -31,7 +35,7 @@
 
 ### Verification
 
-- 64 automated tests pass across the workspace; formatting, strict Clippy, and all-target builds
+- 70 automated tests pass across the workspace; formatting, strict Clippy, and all-target builds
   are clean.
 - The guarded one-PC round trip still depends on the monitor accepting DDC/CI commands while its
   other input is visible, so each setup must complete the guided hardware compatibility test.
