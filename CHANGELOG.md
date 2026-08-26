@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.3.1-alpha — corrected first-run package (pre-release)
+
+### Fixed
+
+- Opens local setup cleanly when an exact retired LAN configuration is still on disk, without
+  importing obsolete hosts or aliases into the new configuration.
+- Keeps setup warnings and the green action button visible in short windows by scrolling the
+  wizard body independently from its footer.
+- Recommends the sole monitor with a recognizable model name and hides duplicate handles that
+  cannot be addressed independently.
+
+### Distribution
+
+- Rebuilds the corrected local-switching code as a new prerelease. Use this package instead of the
+  earlier `v0.3.0-alpha` installer, whose attached binary predates these first-run fixes.
+
 ## v0.3.0-alpha — local two-input reset (pre-release)
 
 ### Changed
