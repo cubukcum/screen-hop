@@ -100,7 +100,6 @@ jobs:
             gh release create "$GITHUB_REF_NAME" \
               release-assets/screen-hop-setup.exe \
               release-assets/SHA256SUMS-installer.txt \
-              --repo "$GITHUB_REPOSITORY" \
               --title "screen-hop $GITHUB_REF_NAME" \
               --notes-from-tag \
               --prerelease \
