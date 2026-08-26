@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.3.2-alpha — source names and Windows app identity (pre-release)
+
+### Added
+
+- Source A and Source B can be renamed later in Settings without recapturing either monitor input.
+  Saved names are trimmed, validated, persisted in the existing local configuration, and reflected
+  immediately in the switch flyout.
+- Added supplied screen-hop artwork to the native window title bar, taskbar, executable, Explorer,
+  Start-menu shortcuts, installer, uninstaller, and Apps list.
+- Added a multi-resolution Windows icon with 16, 20, 24, 32, 40, 48, 64, 128, and 256 px frames.
+
+### Fixed
+
+- Centered the switch glyph with its button label.
+- Centered the light/dark glyphs and selected-theme checkmarks inside their buttons.
+
+### Verification
+
+- 72 automated tests pass across the workspace; formatting and strict Clippy are clean.
+- Release application and installer builds complete successfully, and their extracted embedded
+  icons match the intended 32 px frame exactly.
+
 ## v0.3.1-alpha — corrected first-run package (pre-release)
 
 ### Fixed

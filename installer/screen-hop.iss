@@ -11,7 +11,7 @@
 ; installer\README.md.
 
 #define AppName "screen-hop"
-#define AppVersion "0.3.1"
+#define AppVersion "0.3.2"
 
 [Setup]
 AppId={{7F3A9C2E-1B4D-4E8A-9C5F-2D6E8A1B3C4D}
@@ -30,6 +30,7 @@ Compression=lzma2
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64
 WizardStyle=modern
+SetupIconFile=..\crates\screenhop-ui\assets\screen-hop.ico
 UninstallDisplayIcon={app}\screenhop-ui.exe
 
 [Files]

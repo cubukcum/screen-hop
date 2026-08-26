@@ -10,6 +10,7 @@ export { Theme }
 // succeeded until the backend updates `active-source`.
 export component AppWindow inherits Window {
     title: "screen-hop";
+    icon: @image-url("../assets/window-icon-256.png");
     default-font-family: Theme.font;
     background: Theme.bg;
 
@@ -41,12 +42,15 @@ export component AppWindow inherits Window {
     in-out property <string> setup-message: "";
     in-out property <string> source-a-name: "Desk PC";
     in-out property <string> source-b-name: "Laptop";
+    in-out property <string> settings-name-message: "";
+    in-out property <int> settings-name-message-kind: 0;
 
     callback switch-source(int);
     callback toggle();
     callback open-setup();
     callback open-settings();
     callback close-settings();
+    callback save-source-names();
     callback setup-continue();
     callback setup-capture-a();
     callback setup-listen-b();
@@ -99,7 +103,13 @@ export component AppWindow inherits Window {
         monitor-detail: root.monitor-detail;
         sources: root.sources;
         ready: root.ready;
+        pending-source: root.pending-source;
+        source-a-name <=> root.source-a-name;
+        source-b-name <=> root.source-b-name;
+        name-message <=> root.settings-name-message;
+        name-message-kind <=> root.settings-name-message-kind;
         close => { root.close-settings(); }
         rerun-setup => { root.open-setup(); }
+        save-source-names => { root.save-source-names(); }
     }
 }

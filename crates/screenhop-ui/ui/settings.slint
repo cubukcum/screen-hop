@@ -14,18 +14,22 @@ global SettingsGlyph {
 component SmallButton inherits Rectangle {
     in property <string> label;
     in property <bool> primary: false;
+    in property <bool> enabled: true;
     callback clicked;
     height: 34px;
     width: label-text.preferred-width + 30px;
     border-radius: 7px;
-    background: primary ? (hit.has-hover ? #0c6f39 : Theme.accent) : (hit.has-hover ? Theme.bg2 : Theme.layer);
-    border-width: primary ? 0px : 1px;
+    background: primary
+        ? (enabled ? (hit.has-hover ? #0c6f39 : Theme.accent) : Theme.subtle)
+        : (enabled && hit.has-hover ? Theme.bg2 : Theme.layer);
+    border-width: primary && enabled ? 0px : 1px;
     border-color: Theme.ctl-stroke;
+    opacity: enabled ? 1 : 0.55;
     animate background { duration: 140ms; }
-    hit := TouchArea { clicked => { root.clicked(); } }
+    hit := TouchArea { enabled: root.enabled; clicked => { root.clicked(); } }
     label-text := Text {
         text: root.label;
-        color: primary ? #ffffff : Theme.text2;
+        color: primary && enabled ? #ffffff : Theme.text2;
         font-size: 12px;
         font-weight: 650;
         horizontal-alignment: center;
@@ -33,20 +37,21 @@ component SmallButton inherits Rectangle {
     }
 }
 
-component SourceSummary inherits Rectangle {
+component SourceNameEditor inherits Rectangle {
     in property <string> slot;
-    in property <string> label;
+    in-out property <string> name;
     in property <string> detail;
     in property <bool> configured;
+    callback edited;
     horizontal-stretch: 1;
-    height: 78px;
+    height: 92px;
     border-radius: 9px;
     background: Theme.layer2;
     border-width: 1px;
     border-color: Theme.stroke;
     VerticalLayout {
-        padding: 12px;
-        spacing: 3px;
+        padding: 10px;
+        spacing: 5px;
         HorizontalLayout {
             Text { text: root.slot; color: Theme.text3; font-size: 10px; font-weight: 750; letter-spacing: 0.4px; }
             Rectangle { horizontal-stretch: 1; }
@@ -65,7 +70,25 @@ component SourceSummary inherits Rectangle {
                 }
             }
         }
-        Text { text: root.label; color: Theme.text; font-size: 13px; font-weight: 650; overflow: elide; }
+        Rectangle {
+            height: 31px;
+            border-radius: 6px;
+            background: Theme.layer;
+            border-width: 1px;
+            border-color: name-input.has-focus ? Theme.accent : Theme.ctl-stroke;
+            HorizontalLayout {
+                padding-left: 9px;
+                padding-right: 9px;
+                name-input := TextInput {
+                    text <=> root.name;
+                    color: Theme.text;
+                    font-size: 12px;
+                    single-line: true;
+                    vertical-alignment: center;
+                    edited => { root.edited(); }
+                }
+            }
+        }
         Text { text: root.detail; color: Theme.text3; font-size: 10.5px; overflow: elide; }
     }
 }
@@ -85,6 +108,7 @@ component ThemeChoice inherits Rectangle {
     hit := TouchArea { clicked => { root.clicked(); } }
     HorizontalLayout {
         alignment: center;
+        cross-axis-alignment: center;
         spacing: 8px;
         StrokeIcon { width: 17px; height: 17px; tint: selected ? Theme.accent-text : Theme.text2; commands: root.icon; }
         Text { text: root.label; color: selected ? Theme.accent-text : Theme.text2; font-size: 12px; font-weight: 650; vertical-alignment: center; }
@@ -101,11 +125,15 @@ export component Settings inherits Rectangle {
     in property <string> monitor-detail;
     in property <[SourceChoice]> sources;
     in property <bool> ready: false;
+    in property <int> pending-source: -1;
+    in-out property <string> source-a-name;
+    in-out property <string> source-b-name;
+    in-out property <string> name-message;
+    in-out property <int> name-message-kind: 0; // 0 none · 1 saved · 2 error
     callback close();
     callback rerun-setup();
+    callback save-source-names();
 
-    property <string> source-a-label: sources.length > 0 ? sources[0].label : "Source A";
-    property <string> source-b-label: sources.length > 1 ? sources[1].label : "Source B";
     property <string> source-a-detail: sources.length > 0 ? sources[0].detail : "Not captured";
     property <string> source-b-detail: sources.length > 1 ? sources[1].detail : "Not captured";
 
@@ -185,17 +213,43 @@ export component Settings inherits Rectangle {
                 }
                 HorizontalLayout {
                     spacing: 9px;
-                    SourceSummary {
+                    SourceNameEditor {
                         slot: "SOURCE A";
-                        label: root.source-a-label;
+                        name <=> root.source-a-name;
                         detail: root.source-a-detail;
                         configured: root.sources.length > 0 && root.sources[0].configured;
+                        edited => { root.name-message = ""; root.name-message-kind = 0; }
                     }
-                    SourceSummary {
+                    SourceNameEditor {
                         slot: "SOURCE B";
-                        label: root.source-b-label;
+                        name <=> root.source-b-name;
                         detail: root.source-b-detail;
                         configured: root.sources.length > 1 && root.sources[1].configured;
+                        edited => { root.name-message = ""; root.name-message-kind = 0; }
+                    }
+                }
+                HorizontalLayout {
+                    Text {
+                        text: root.pending-source >= 0
+                            ? "Wait for the current switch to finish before renaming."
+                            : root.name-message == ""
+                            ? "Rename labels without recapturing either input."
+                            : root.name-message;
+                        color: root.pending-source >= 0
+                            ? Theme.warn-text
+                            : root.name-message-kind == 1
+                            ? Theme.accent-text
+                            : root.name-message-kind == 2 ? Theme.danger-text : Theme.text3;
+                        font-size: 10.5px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    SmallButton {
+                        label: "Save names";
+                        primary: true;
+                        enabled: root.pending-source < 0;
+                        clicked => { root.save-source-names(); }
                     }
                 }
                 Rectangle { vertical-stretch: 1; }

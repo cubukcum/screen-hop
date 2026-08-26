@@ -31,6 +31,30 @@ fn arg_value(args: &[String], key: &str) -> Option<String> {
         .cloned()
 }
 
+fn normalize_source_names(
+    source_a: &str,
+    source_b: &str,
+) -> Result<(String, String), &'static str> {
+    let source_a = source_a.trim().to_owned();
+    let source_b = source_b.trim().to_owned();
+    if source_a.is_empty() || source_b.is_empty() {
+        return Err("Give both sources a name.");
+    }
+    Ok((source_a, source_b))
+}
+
+fn config_with_source_names(
+    config: &LocalConfig,
+    source_a: &str,
+    source_b: &str,
+) -> Result<LocalConfig, &'static str> {
+    let (source_a, source_b) = normalize_source_names(source_a, source_b)?;
+    let mut config = config.clone();
+    config.source_mut(SourceSlot::A).label = source_a;
+    config.source_mut(SourceSlot::B).label = source_b;
+    Ok(config)
+}
+
 fn attach_parent_console() {
     #[cfg(windows)]
     unsafe {
@@ -376,8 +400,14 @@ fn wire_callbacks(
 
     {
         let app_weak = app.as_weak();
+        let state = Rc::clone(&state);
         app.on_open_settings(move || {
             if let Some(app) = app_weak.upgrade() {
+                let ui = state.borrow();
+                app.set_source_a_name(ui.config.source(SourceSlot::A).label.as_str().into());
+                app.set_source_b_name(ui.config.source(SourceSlot::B).label.as_str().into());
+                app.set_settings_name_message("".into());
+                app.set_settings_name_message_kind(0);
                 app.set_screen(2);
             }
         });
@@ -385,10 +415,62 @@ fn wire_callbacks(
 
     {
         let app_weak = app.as_weak();
+        let state = Rc::clone(&state);
         app.on_close_settings(move || {
             if let Some(app) = app_weak.upgrade() {
+                let ui = state.borrow();
+                app.set_source_a_name(ui.config.source(SourceSlot::A).label.as_str().into());
+                app.set_source_b_name(ui.config.source(SourceSlot::B).label.as_str().into());
+                app.set_settings_name_message("".into());
+                app.set_settings_name_message_kind(0);
                 app.set_screen(0);
             }
+        });
+    }
+
+    {
+        let app_weak = app.as_weak();
+        let state = Rc::clone(&state);
+        app.on_save_source_names(move || {
+            let Some(app) = app_weak.upgrade() else {
+                return;
+            };
+            let source_a_name = app.get_source_a_name();
+            let source_b_name = app.get_source_b_name();
+            let mut ui = state.borrow_mut();
+            if ui.pending.is_some() {
+                app.set_settings_name_message(
+                    "Wait for the current switch to finish before renaming.".into(),
+                );
+                app.set_settings_name_message_kind(2);
+                return;
+            }
+            let config = match config_with_source_names(
+                &ui.config,
+                source_a_name.as_str(),
+                source_b_name.as_str(),
+            ) {
+                Ok(config) => config,
+                Err(message) => {
+                    app.set_settings_name_message(message.into());
+                    app.set_settings_name_message_kind(2);
+                    return;
+                }
+            };
+            if let Err(error) = save_config(&ui.config_dir, &config) {
+                app.set_settings_name_message(format!("Could not save names: {error}").into());
+                app.set_settings_name_message_kind(2);
+                return;
+            }
+
+            let source_a_name = config.source(SourceSlot::A).label.clone();
+            let source_b_name = config.source(SourceSlot::B).label.clone();
+            ui.config = config;
+            app.set_source_a_name(source_a_name.into());
+            app.set_source_b_name(source_b_name.into());
+            app.set_settings_name_message("Names saved. Captured inputs were not changed.".into());
+            app.set_settings_name_message_kind(1);
+            apply_state_view(&app, &ui);
         });
     }
 
@@ -505,12 +587,16 @@ fn wire_callbacks(
                 return;
             };
 
-            let source_a_name = app.get_source_a_name().trim().to_owned();
-            let source_b_name = app.get_source_b_name().trim().to_owned();
-            if source_a_name.is_empty() || source_b_name.is_empty() {
-                app.set_setup_message("Give both sources a name.".into());
-                return;
-            }
+            let (source_a_name, source_b_name) = match normalize_source_names(
+                app.get_source_a_name().as_str(),
+                app.get_source_b_name().as_str(),
+            ) {
+                Ok(names) => names,
+                Err(message) => {
+                    app.set_setup_message(message.into());
+                    return;
+                }
+            };
 
             let mut config = LocalConfig {
                 selected_monitor: Some(monitor_id.clone()),
@@ -1202,6 +1288,44 @@ mod tests {
             backend: backend.to_owned(),
             fingerprint: None,
         }
+    }
+
+    #[test]
+    fn source_names_are_trimmed_and_must_both_be_present() {
+        assert_eq!(
+            normalize_source_names("  Work laptop  ", "Game PC\t"),
+            Ok(("Work laptop".to_owned(), "Game PC".to_owned()))
+        );
+        assert_eq!(
+            normalize_source_names("   ", "Game PC"),
+            Err("Give both sources a name.")
+        );
+        assert_eq!(
+            normalize_source_names("Work laptop", "\n\t"),
+            Err("Give both sources a name.")
+        );
+    }
+
+    #[test]
+    fn renaming_sources_preserves_monitor_inputs_aliases_and_switch_history() {
+        let mut original = LocalConfig {
+            selected_monitor: Some("display-7".to_owned()),
+            selected_monitor_model_token: Some("AOC:27P2DG5".to_owned()),
+            ..LocalConfig::default()
+        };
+        original.source_mut(SourceSlot::A).confirmed_value = Some(0x0f);
+        original.source_mut(SourceSlot::B).confirmed_value = Some(0x11);
+        original
+            .monitor_aliases
+            .insert("display-7".to_owned(), "Desk monitor".to_owned());
+        original.last_requested = Some(SourceSlot::B);
+
+        let renamed = config_with_source_names(&original, "  Desktop  ", "Laptop ").unwrap();
+        let mut expected = original;
+        expected.source_mut(SourceSlot::A).label = "Desktop".to_owned();
+        expected.source_mut(SourceSlot::B).label = "Laptop".to_owned();
+
+        assert_eq!(renamed, expected);
     }
 
     #[test]

@@ -14,3 +14,4 @@ screenhop-quirks = { path = "../screenhop-quirks" }
 
 [build-dependencies]
 slint-build = { workspace = true }
+winresource = "0.1"
